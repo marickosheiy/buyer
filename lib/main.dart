@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'login_page.dart';
+import 'intro_screen.dart';
 
 void main() {
   runApp(const MyApp());
@@ -15,7 +15,7 @@ class MyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: 'Lumear',
       theme: ThemeData(useMaterial3: true),
-      home: const LoginPage(),
+      home: const IntroScreen(),
     );
   }
 }

@@ -63,7 +63,7 @@ flutter:
     - assets/images/google.png
     - assets/images/communication.png
     - assets/images/logo.png
-
+    - assets/video/lumear.mp3
   # To add assets to your application, add an assets section, like this:
   # assets:
   #   - images/a_dot_burr.jpeg

@@ -11,9 +11,12 @@ class IntroScreen extends StatefulWidget {
 }
 
 class _IntroScreenState extends State<IntroScreen>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _animationController;
+    with TickerProviderStateMixin {
+  late AnimationController _slideController;
+  late AnimationController _fadeController;
+
   late Animation<double> _slideAnimation;
+  late Animation<double> _fadeAnimation;
 
   final AudioPlayer _audioPlayer = AudioPlayer();
 
@@ -21,39 +24,55 @@ class _IntroScreenState extends State<IntroScreen>
   void initState() {
     super.initState();
 
-    _animationController = AnimationController(
+    // L animation
+    _slideController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 2),
     );
 
+    // UMEAR fade animation
+    _fadeController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 1),
+    );
+
     _slideAnimation = Tween<double>(
       begin: 0,
-      end: -120,
+      end: -140,
     ).animate(
       CurvedAnimation(
-        parent: _animationController,
+        parent: _slideController,
         curve: Curves.easeInOut,
       ),
+    );
+
+    _fadeAnimation = CurvedAnimation(
+      parent: _fadeController,
+      curve: Curves.easeIn,
     );
 
     _startIntro();
   }
 
   Future<void> _startIntro() async {
-    // Play voice-over
-   await _audioPlayer.play(
-  AssetSource('video/lumear.mp3'),
-  position: const Duration(seconds: 2),
-);
+    // Start audio immediately at 0:00
+    await _audioPlayer.play(
+      AssetSource('video/lumear.mp3'),
+    );
 
-    // Wait before starting animation
+    // Small delay before the L starts moving
     await Future.delayed(const Duration(milliseconds: 500));
 
-    // Slide the L to the left
-    await _animationController.forward();
+    // Move the L to the left
+    await _slideController.forward();
 
-    // Keep the logo visible
-    await Future.delayed(const Duration(seconds: 2));
+    // After L reaches the side, reveal UMEAR
+    await _fadeController.forward();
+
+    // Wait until the 6-second audio is almost finished.
+    // 0.5 sec delay + 2 sec slide + 1 sec fade = 3.5 sec
+    // Wait another 2.5 sec = approximately 6 sec total
+    await Future.delayed(const Duration(milliseconds: 2500));
 
     if (mounted) {
       Navigator.pushReplacement(
@@ -67,7 +86,8 @@ class _IntroScreenState extends State<IntroScreen>
 
   @override
   void dispose() {
-    _animationController.dispose();
+    _slideController.dispose();
+    _fadeController.dispose();
     _audioPlayer.dispose();
     super.dispose();
   }
@@ -75,38 +95,51 @@ class _IntroScreenState extends State<IntroScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: Color(0xFFF9EEEA),
       body: Center(
         child: AnimatedBuilder(
-          animation: _animationController,
+          animation: Listenable.merge([
+            _slideController,
+            _fadeController,
+          ]),
           builder: (context, child) {
-            return Stack(
-              alignment: Alignment.center,
-              children: [
-                // The rest of the brand name behind the L
-                const Text(
-                  'UMEAR',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 65,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 2,
-                  ),
-                ),
-
-                // The big L slides to reveal the name
-                Transform.translate(
-                  offset: Offset(_slideAnimation.value, 0),
-                  child: const Text(
-                    'L',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 100,
-                      fontWeight: FontWeight.bold,
+            return SizedBox(
+              width: 350,
+              height: 150,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  // UMEAR is invisible at first
+                  Opacity(
+                    opacity: _fadeAnimation.value,
+                    child: const Text(
+                      'UMEAR',
+                      style: TextStyle(
+                        color: Color(0xFF963B36),
+                        fontSize: 65,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 2,
+                      ),
                     ),
                   ),
-                ),
-              ],
+
+                  // L starts in the center and moves left
+                  Transform.translate(
+                    offset: Offset(
+                      _slideAnimation.value,
+                      0,
+                    ),
+                    child: const Text(
+                      'L',
+                      style: TextStyle(
+                        color: Color(0xFF963B36),
+                        fontSize: 65,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             );
           },
         ),
