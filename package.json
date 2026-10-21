@@ -1,0 +1,10 @@
+{
+  "name": "lumear-api-launcher",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Launch the existing Lumear Python/MySQL API",
+  "scripts": {
+    "start": "node server.js",
+    "start:local": "node server.js --local"
+  }
+}

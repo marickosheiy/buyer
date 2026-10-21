@@ -1,0 +1,10 @@
+**
+!Dockerfile
+!requirements-mysql.txt
+!requirements-hosting.txt
+!server.py
+!mysql_store.py
+!mobile_auth.py
+!host_api.py
+!schema.sql
+!mobile_schema.sql
