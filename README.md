@@ -1,17 +1,14 @@
-# flutter_application_1
+# Lumear buyer and seller app
 
-A new Flutter project.
+Flutter mobile app backed by a local Python API and the standalone MySQL database.
 
-## Getting Started
+Start the API with `node server.js` (or `npm start`). The launcher uses the private
+cloud database settings when `.env.cloud` exists. Use `npm run start:local` for
+the local database. It requires Python and `backend/requirements-hosting.txt`;
+it launches the existing backend rather than replacing it with a Node-only API.
+Starting this on your computer does not deploy it online. An online API host and
+an APK configured with that host's HTTPS address are still required for USB-free use.
 
-This project is a starting point for a Flutter application.
-
-A few resources to get you started if this is your first Flutter project:
-
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+Use the MySQL USB phone launch in VS Code to start the API and connect the tablet.
+See [backend setup](backend/README.md) for Gmail email-code setup, launch commands,
+connected features, current limitations and verification instructions.
