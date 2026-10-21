@@ -1,0 +1,12 @@
+**
+!Dockerfile
+!backend/
+backend/**
+!backend/requirements-mysql.txt
+!backend/requirements-hosting.txt
+!backend/server.py
+!backend/mysql_store.py
+!backend/mobile_auth.py
+!backend/host_api.py
+!backend/schema.sql
+!backend/mobile_schema.sql
