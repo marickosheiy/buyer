@@ -1,1114 +1,658 @@
 import 'package:flutter/material.dart';
 
+import '../services/buyer_data.dart';
+
 import '../cart_manager.dart';
 import '../cart_screen.dart';
+import '../design/components.dart';
+import '../design/brand_art.dart';
+import '../design/lumear_image.dart';
+import '../design/lumear_theme.dart';
+import '../product_model.dart';
+import '../search_screen.dart';
+import '../services/wishlist_manager.dart';
+import '../widgets/banner_carousel.dart';
 import 'notifications_screen.dart';
 import 'orders_screen.dart';
 import 'profile_screen.dart';
+import 'voucher_screen.dart';
+import 'wishlist_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
-  const DashboardScreen({super.key});
-
+  const DashboardScreen({super.key, this.connected = false});
+  final bool connected;
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
   int selectedIndex = 0;
+  @override
+  void initState() {
+    super.initState();
+    if (widget.connected) {
+      BuyerData.instance.connect();
+      refreshData();
+    }
+  }
 
-  // Key for the CART ICON at the top of the Dashboard.
-  final GlobalKey cartKey = GlobalKey();
-
-  static const Color cream = Color(0xFFFFF8F4);
-  static const Color maroon = Color(0xFF963B36);
-  static const Color darkMaroon = Color(0xFF721E1E);
-  static const Color lightMaroon = Color(0xFFC78F88);
-  static const Color fieldColor = Color(0xFFF9EEEA);
-  static const Color darkText = Color(0xFF4E3431);
+  Future<void> refreshData() async {
+    try {
+      await BuyerData.instance.refresh();
+    } catch (_) {}
+  }
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: cream,
-      body: SafeArea(
-        child: IndexedStack(
-          index: selectedIndex,
-          children: [
-            HomeScreen(
-              cartKey: cartKey,
+  Widget build(BuildContext context) => LumearAppearance.build(
+    context,
+    () => ListenableBuilder(
+      listenable: BuyerData.instance,
+      builder: (context, _) => Scaffold(
+        body: SafeArea(
+          child: Column(
+            children: [
+              if (widget.connected && BuyerData.instance.loading)
+                const LinearProgressIndicator(),
+              if (widget.connected && BuyerData.instance.error != null)
+                MaterialBanner(
+                  content: Text(BuyerData.instance.error!),
+                  actions: [
+                    TextButton(
+                      onPressed: refreshData,
+                      child: const Text('Retry'),
+                    ),
+                  ],
+                ),
+              Expanded(
+                child: IndexedStack(
+                  index: selectedIndex,
+                  children: const [
+                    HomeScreen(),
+                    SearchScreen(embedded: true),
+                    NotificationsScreen(),
+                    OrdersScreen(),
+                    ProfileScreen(),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        bottomNavigationBar: LumearDock(
+          selectedIndex: selectedIndex,
+          onSelected: (i) => setState(() => selectedIndex = i),
+          destinations: const [
+            NavigationDestination(
+              icon: Icon(Icons.home_outlined),
+              selectedIcon: Icon(Icons.home_rounded),
+              label: 'Home',
             ),
-            const NotificationsScreen(),
-            const OrdersScreen(),
-            const ProfileScreen(),
+            NavigationDestination(
+              icon: Icon(Icons.grid_view_outlined),
+              selectedIcon: Icon(Icons.grid_view_rounded),
+              label: 'Browse',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.notifications_none),
+              selectedIcon: Icon(Icons.notifications),
+              label: 'Inbox',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.receipt_long_outlined),
+              selectedIcon: Icon(Icons.receipt_long),
+              label: 'Orders',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.person_outline),
+              selectedIcon: Icon(Icons.person),
+              label: 'Me',
+            ),
           ],
         ),
       ),
-      bottomNavigationBar: buildBottomNavigation(),
+    ),
+  );
+}
+
+class HomeScreen extends StatelessWidget {
+  const HomeScreen({super.key});
+  void _browse(BuildContext context, [String category = 'All']) =>
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => SearchScreen(initialCategory: category),
+        ),
+      );
+  @override
+  Widget build(BuildContext context) => LumearAppearance.build(
+    context,
+    () => ListenableBuilder(
+      listenable: ProductCatalog.instance,
+      builder: (context, _) => _content(context),
+    ),
+  );
+  Widget _content(BuildContext context) {
+    final featured = lumearProducts.where((p) => p.isFeatured).toList();
+    return Scaffold(
+      body: CustomScrollView(
+        slivers: [
+          SliverPadding(
+            padding: const EdgeInsets.symmetric(horizontal: 18),
+            sliver: SliverList.list(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(top: 10, bottom: 6),
+                  child: Row(
+                    children: [
+                      Image.asset(
+                        'assets/images/logo.png',
+                        width: 53,
+                        height: 48,
+                        fit: BoxFit.contain,
+                      ),
+                      const SizedBox(width: 5),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'LUMEAR',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w900,
+                                fontSize: 17,
+                                letterSpacing: 2,
+                                color: LumearColors.dark,
+                              ),
+                            ),
+                            SizedBox(height: 2),
+                            Text(
+                              'Find your kind of everyday.',
+                              style: TextStyle(
+                                fontSize: 9,
+                                color: LumearColors.ink,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const AppearanceButton(),
+                      IconButton(
+                        tooltip: 'Wishlist',
+                        onPressed: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const WishlistScreen(),
+                          ),
+                        ),
+                        icon: const Icon(Icons.favorite_border, size: 21),
+                      ),
+                      ListenableBuilder(
+                        listenable: CartManager.instance,
+                        builder: (_, _) => IconButton(
+                          tooltip: 'Shopping bag',
+                          onPressed: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const CartScreen(),
+                            ),
+                          ),
+                          icon: Badge(
+                            isLabelVisible: CartManager.instance.itemCount > 0,
+                            label: Text('${CartManager.instance.itemCount}'),
+                            child: const Icon(
+                              Icons.shopping_bag_outlined,
+                              size: 22,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Material(
+                  color: LumearColors.field,
+                  borderRadius: BorderRadius.circular(15),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(15),
+                    onTap: () => _browse(context),
+                    child: Padding(
+                      padding: EdgeInsets.all(15),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.search,
+                            color: LumearColors.maroon,
+                            size: 20,
+                          ),
+                          SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              'Find your next favorite',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                          Icon(Icons.tune, size: 18, color: LumearColors.dark),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 13),
+                Row(
+                  children: [
+                    Expanded(child: RuledLabel('GOOD FINDS. GOOD ENERGY.')),
+                    Text(
+                      'THE DAILY EDIT',
+                      style: TextStyle(
+                        fontSize: 8,
+                        letterSpacing: 1,
+                        fontWeight: FontWeight.w700,
+                        color: LumearColors.dark,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                const BannerCarousel(),
+                const _ShoppingSummary(),
+                const SizedBox(height: 12),
+                SizedBox(
+                  height: 42,
+                  child: ListView(
+                    scrollDirection: Axis.horizontal,
+                    children: [
+                      for (final category
+                          in (ProductCatalog.instance.connected
+                              ? [
+                                  'All finds',
+                                  ...lumearProducts
+                                      .map((p) => p.category)
+                                      .toSet(),
+                                ]
+                              : const [
+                                  'All finds',
+                                  'Fashion',
+                                  'Electronics',
+                                  'Beauty',
+                                  'Home',
+                                  'Jewelry',
+                                  'Gaming',
+                                  'Baby',
+                                ]))
+                        Padding(
+                          padding: const EdgeInsets.only(right: 7),
+                          child: ActionChip(
+                            onPressed: () => _browse(
+                              context,
+                              category == 'All finds' ? 'All' : category,
+                            ),
+                            backgroundColor: category == 'All finds'
+                                ? LumearColors.dark
+                                : LumearColors.field,
+                            side: BorderSide.none,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(22),
+                            ),
+                            label: Text(
+                              category,
+                              style: TextStyle(
+                                color: category == 'All finds'
+                                    ? LumearColors.cream
+                                    : LumearColors.dark,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                SectionHeading(
+                  'Currently catching eyes',
+                  kicker: 'THE FAVORITES',
+                  onTap: () => _browse(context),
+                ),
+                SizedBox(
+                  height: 310,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: featured.length,
+                    separatorBuilder: (_, _) => const SizedBox(width: 12),
+                    itemBuilder: (_, i) =>
+                        SizedBox(width: 175, child: ProductCard(featured[i])),
+                  ),
+                ),
+                const SectionHeading(
+                  'Pick your mood.',
+                  kicker: 'A DIFFERENT KIND OF DISCOVERY',
+                ),
+                if (lumearProducts.isNotEmpty)
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: _MoodTile(
+                          product: lumearProducts[0],
+                          title: 'WEAR\nYOUR MOOD.',
+                          category: lumearProducts[0].category,
+                          height: 232,
+                          onTap: () =>
+                              _browse(context, lumearProducts[0].category),
+                        ),
+                      ),
+                      if (lumearProducts.length > 1) const SizedBox(width: 12),
+                      if (lumearProducts.length > 1)
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.only(top: 28),
+                            child: _MoodTile(
+                              product: lumearProducts[1],
+                              title: 'SWITCH\nIT UP.',
+                              category: lumearProducts[1].category,
+                              height: 232,
+                              onTap: () =>
+                                  _browse(context, lumearProducts[1].category),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                const SizedBox(height: 22),
+                Material(
+                  color: LumearColors.light,
+                  borderRadius: BorderRadius.circular(20),
+                  clipBehavior: Clip.antiAlias,
+                  child: InkWell(
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const VoucherScreen()),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 18,
+                        vertical: 20,
+                      ),
+                      child: Row(
+                        children: [
+                          Transform.rotate(
+                            angle: -.15,
+                            child: const Burst(
+                              label: 'A LITTLE\nEXTRA',
+                              size: 73,
+                            ),
+                          ),
+                          const SizedBox(width: 17),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'GOOD FINDS.\nEXTRA DELIGHT.',
+                                  style: TextStyle(
+                                    color: LumearColors.dark,
+                                    fontSize: 21,
+                                    fontWeight: FontWeight.w900,
+                                    height: 1,
+                                  ),
+                                ),
+                                SizedBox(height: 8),
+                                Text(
+                                  'Open your voucher collection',
+                                  style: TextStyle(
+                                    color: LumearColors.dark,
+                                    fontSize: 10,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Icon(Icons.north_east, color: LumearColors.dark),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                SectionHeading(
+                  'Fresh things, fresh feeling.',
+                  kicker: 'NEW TO LUMEAR',
+                  onTap: () => _browse(context),
+                ),
+                SizedBox(
+                  height: 310,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: lumearProducts.where((p) => p.isNew).length,
+                    separatorBuilder: (_, _) => const SizedBox(width: 12),
+                    itemBuilder: (_, i) => SizedBox(
+                      width: 175,
+                      child: ProductCard(
+                        lumearProducts.where((p) => p.isNew).toList()[i],
+                      ),
+                    ),
+                  ),
+                ),
+                const SectionHeading(
+                  'Your next good find.',
+                  kicker: 'GO ON. HAVE A LOOK AROUND.',
+                ),
+              ],
+            ),
+          ),
+          SliverPadding(
+            padding: const EdgeInsets.symmetric(horizontal: 18),
+            sliver: SliverLayoutBuilder(
+              builder: (_, constraints) => SliverGrid.builder(
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: (constraints.crossAxisExtent / 170)
+                      .floor()
+                      .clamp(2, 6),
+                  mainAxisExtent: 328,
+                  mainAxisSpacing: 14,
+                  crossAxisSpacing: 12,
+                ),
+                itemCount: lumearProducts.length,
+                itemBuilder: (_, i) => ProductCard(lumearProducts[i]),
+              ),
+            ),
+          ),
+          SliverToBoxAdapter(
+            child: Container(
+              margin: const EdgeInsets.fromLTRB(18, 26, 18, 18),
+              padding: const EdgeInsets.all(26),
+              decoration: BoxDecoration(
+                color: LumearColors.brandMaroon,
+                borderRadius: BorderRadius.circular(24),
+              ),
+              child: Column(
+                children: [
+                  Icon(Icons.auto_awesome, color: LumearColors.ivory, size: 29),
+                  SizedBox(height: 12),
+                  Text(
+                    'A LITTLE YOU.\nA LOT TO LOVE.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: LumearColors.ivory,
+                      fontSize: 32,
+                      fontWeight: FontWeight.w900,
+                      height: 1,
+                    ),
+                  ),
+                  SizedBox(height: 14),
+                  Text(
+                    'LUMEAR · Cash on delivery',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: LumearColors.ivory, fontSize: 9),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
+}
 
-  // ===========================================================
-  // BOTTOM NAVIGATION
-  // ===========================================================
-
-  Widget buildBottomNavigation() {
-    return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        border: Border(
-          top: BorderSide(
-            color: Color(0xFFECDCD4),
-          ),
-        ),
-      ),
-      child: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: 8,
-            vertical: 8,
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
+class _MoodTile extends StatelessWidget {
+  const _MoodTile({
+    required this.product,
+    required this.title,
+    required this.category,
+    required this.height,
+    required this.onTap,
+  });
+  final LumearProduct product;
+  final String title, category;
+  final double height;
+  final VoidCallback onTap;
+  @override
+  Widget build(BuildContext context) => LumearAppearance.build(
+    context,
+    () => Material(
+      borderRadius: BorderRadius.circular(18),
+      clipBehavior: Clip.antiAlias,
+      color: LumearColors.dark,
+      child: InkWell(
+        onTap: onTap,
+        child: SizedBox(
+          height: height,
+          child: Stack(
+            fit: StackFit.expand,
             children: [
-              buildNavItem(
-                Icons.home_rounded,
-                Icons.home_outlined,
-                'Home',
-                0,
+              LumearImage(product.imageUrl, fit: BoxFit.cover),
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Colors.transparent, LumearColors.dark],
+                    stops: [.2, 1],
+                  ),
+                ),
               ),
-              buildNavItem(
-                Icons.notifications_rounded,
-                Icons.notifications_none_rounded,
-                'Notifications',
-                1,
-              ),
-              buildOrdersNavItem(),
-              buildNavItem(
-                Icons.person_rounded,
-                Icons.person_outline_rounded,
-                'Profile',
-                3,
+              Positioned(
+                left: 14,
+                right: 12,
+                bottom: 16,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      category.toUpperCase(),
+                      style: TextStyle(
+                        color: LumearColors.cream,
+                        fontSize: 8,
+                        letterSpacing: 1.4,
+                      ),
+                    ),
+                    const SizedBox(height: 7),
+                    Text(
+                      title,
+                      style: TextStyle(
+                        color: LumearColors.cream,
+                        fontSize: 24,
+                        height: .98,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Icon(
+                      Icons.arrow_forward,
+                      color: LumearColors.cream,
+                      size: 20,
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
         ),
       ),
-    );
-  }
-
-  Widget buildNavItem(
-    IconData activeIcon,
-    IconData inactiveIcon,
-    String label,
-    int index,
-  ) {
-    final isSelected = selectedIndex == index;
-
-    return InkWell(
-      borderRadius: BorderRadius.circular(14),
-      onTap: () {
-        setState(() {
-          selectedIndex = index;
-        });
-      },
-      child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: 10,
-          vertical: 6,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              isSelected ? activeIcon : inactiveIcon,
-              color: isSelected ? maroon : lightMaroon,
-              size: 25,
-            ),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: TextStyle(
-                color: isSelected ? maroon : lightMaroon,
-                fontSize: 10,
-                fontWeight:
-                    isSelected ? FontWeight.bold : FontWeight.normal,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget buildOrdersNavItem() {
-    final isSelected = selectedIndex == 2;
-
-    return InkWell(
-      borderRadius: BorderRadius.circular(14),
-      onTap: () {
-        setState(() {
-          selectedIndex = 2;
-        });
-      },
-      child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: 10,
-          vertical: 6,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              isSelected
-                  ? Icons.receipt_long_rounded
-                  : Icons.receipt_long_outlined,
-              color: isSelected ? maroon : lightMaroon,
-              size: 25,
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Orders',
-              style: TextStyle(
-                color: isSelected ? maroon : lightMaroon,
-                fontSize: 10,
-                fontWeight:
-                    isSelected ? FontWeight.bold : FontWeight.normal,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+    ),
+  );
 }
 
-// ===========================================================
-// HOME SCREEN
-// ===========================================================
-
-class HomeScreen extends StatefulWidget {
-  final GlobalKey cartKey;
-
-  const HomeScreen({
-    super.key,
-    required this.cartKey,
-  });
+class _ShoppingSummary extends StatelessWidget {
+  const _ShoppingSummary();
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
-}
-
-class _HomeScreenState extends State<HomeScreen> {
-  static const Color cream = Color(0xFFFFF8F4);
-  static const Color maroon = Color(0xFF963B36);
-  static const Color darkMaroon = Color(0xFF721E1E);
-  static const Color lightMaroon = Color(0xFFC78F88);
-  static const Color fieldColor = Color(0xFFF9EEEA);
-  static const Color darkText = Color(0xFF4E3431);
-
-  // Keys for the actual product pictures.
-  final GlobalKey shirtKey = GlobalKey();
-  final GlobalKey headsetKey = GlobalKey();
-  final GlobalKey babyKey = GlobalKey();
-  final GlobalKey jewelryKey = GlobalKey();
-  final GlobalKey controllerKey = GlobalKey();
-  final GlobalKey organizerKey = GlobalKey();
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: cream,
-      body: SingleChildScrollView(
-        physics: const BouncingScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(
-          22,
-          20,
-          22,
-          30,
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // ===================================================
-            // HEADER
-            // ===================================================
-
-            Row(
-              children: [
-                Container(
-                  width: 48,
-                  height: 48,
-                  decoration: const BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: fieldColor,
-                  ),
-                  child: const Icon(
-                    Icons.person_rounded,
-                    color: maroon,
-                  ),
-                ),
-
-                const SizedBox(width: 12),
-
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Welcome back!',
-                        style: TextStyle(
-                          color: lightMaroon,
-                          fontSize: 12,
-                        ),
-                      ),
-                      SizedBox(height: 2),
-                      Text(
-                        'Lumear Buyer',
-                        style: TextStyle(
-                          color: darkMaroon,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                // =================================================
-                // TOP CART ICON
-                // =================================================
-
-                ValueListenableBuilder<List<CartItem>>(
-                  valueListenable: CartManager.instance.items,
-                  builder: (context, items, child) {
-                    final totalItems = items.fold<int>(
-                      0,
-                      (total, item) => total + item.quantity,
-                    );
-
-                    return Stack(
-                      clipBehavior: Clip.none,
-                      children: [
-                        IconButton(
-                          key: widget.cartKey,
-                          onPressed: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) =>
-                                    const CartScreen(),
-                              ),
-                            );
-                          },
-                          icon: const Icon(
-                            Icons.shopping_cart_outlined,
-                            color: darkMaroon,
-                            size: 27,
-                          ),
-                        ),
-
-                        if (totalItems > 0)
-                          Positioned(
-                            right: 0,
-                            top: 0,
-                            child: Container(
-                              constraints: const BoxConstraints(
-                                minWidth: 19,
-                                minHeight: 19,
-                              ),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 4,
-                              ),
-                              decoration: const BoxDecoration(
-                                color: maroon,
-                                shape: BoxShape.circle,
-                              ),
-                              child: Center(
-                                child: Text(
-                                  totalItems > 99
-                                      ? '99+'
-                                      : totalItems.toString(),
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 9,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                      ],
-                    );
-                  },
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 24),
-
-            // ===================================================
-            // SEARCH BAR
-            // ===================================================
-
-            Container(
-              height: 52,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: const Color(0xFFEAD7CE),
-                ),
+  Widget build(BuildContext context) => LumearAppearance.build(
+    context,
+    () => ListenableBuilder(
+      listenable: Listenable.merge([
+        CartManager.instance,
+        WishlistManager.instance,
+      ]),
+      builder: (context, _) => Card(
+        margin: const EdgeInsets.symmetric(vertical: 12),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Your shopping, at a glance',
+                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
               ),
-              child: const TextField(
-                decoration: InputDecoration(
-                  hintText: 'Search products...',
-                  hintStyle: TextStyle(
-                    color: lightMaroon,
-                    fontSize: 13,
-                  ),
-                  prefixIcon: Icon(
-                    Icons.search_rounded,
-                    color: maroon,
-                  ),
-                  border: InputBorder.none,
-                  contentPadding: EdgeInsets.symmetric(
-                    vertical: 16,
-                  ),
-                ),
+              const SizedBox(height: 4),
+              const Text(
+                'Pick up where you left off.',
+                style: TextStyle(fontSize: 12),
               ),
-            ),
-
-            const SizedBox(height: 24),
-
-            // ===================================================
-            // PROMO BANNER
-            // ===================================================
-
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(22),
-              decoration: BoxDecoration(
-                color: darkMaroon,
-                borderRadius: BorderRadius.circular(22),
-              ),
-              child: Row(
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
                 children: [
-                  const Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Good Finds,\nBrighter Days.',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 23,
-                            height: 1.2,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        SizedBox(height: 8),
-                        Text(
-                          'Discover products made for you.',
-                          style: TextStyle(
-                            color: Colors.white70,
-                            fontSize: 11,
-                          ),
-                        ),
-                      ],
+                  ActionChip(
+                    avatar: const Icon(Icons.shopping_bag_outlined, size: 18),
+                    label: Text('Bag (${CartManager.instance.itemCount})'),
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const CartScreen()),
                     ),
                   ),
-                  Container(
-                    width: 78,
-                    height: 78,
-                    decoration: const BoxDecoration(
-                      color: Colors.white12,
-                      shape: BoxShape.circle,
+                  ActionChip(
+                    avatar: const Icon(Icons.favorite_border, size: 18),
+                    label: Text(
+                      'Saved (${WishlistManager.instance.items.length})',
                     ),
-                    child: const Icon(
-                      Icons.shopping_bag_outlined,
-                      size: 38,
-                      color: Colors.white,
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const WishlistScreen()),
+                    ),
+                  ),
+                  ActionChip(
+                    avatar: const Icon(
+                      Icons.confirmation_number_outlined,
+                      size: 18,
+                    ),
+                    label: const Text('My vouchers'),
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const VoucherScreen()),
                     ),
                   ),
                 ],
               ),
-            ),
-
-            const SizedBox(height: 28),
-
-            // ===================================================
-            // CATEGORIES
-            // ===================================================
-
-            buildSectionHeader(
-              'Categories',
-              'See all',
-            ),
-
-            const SizedBox(height: 14),
-
-            SizedBox(
-              height: 100,
-              child: ListView(
-                scrollDirection: Axis.horizontal,
-                physics: const BouncingScrollPhysics(),
-                children: [
-                  buildCategory(
-                    'https://images.unsplash.com/photo-1445205170230-053b83016050',
-                    'Fashion',
-                  ),
-                  buildCategory(
-                    'https://images.unsplash.com/photo-1496181133206-80ce9b88a853',
-                    'Electronics',
-                  ),
-                  buildCategory(
-                    'https://images.unsplash.com/photo-1519689680058-324335c77eba',
-                    'Baby',
-                  ),
-                  buildCategory(
-                    'https://images.unsplash.com/photo-1596462502278-27bfdc403348',
-                    'Beauty',
-                  ),
-                  buildCategory(
-                    'https://images.unsplash.com/photo-1600080972464-8e5f35f63d08',
-                    'Gaming',
-                  ),
-                  buildCategory(
-                    'https://images.unsplash.com/photo-1555041469-a586c61ea9bc',
-                    'Home',
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 25),
-
-            // ===================================================
-            // FEATURED PRODUCTS
-            // ===================================================
-
-            buildSectionHeader(
-              'Featured Products',
-              'See all',
-            ),
-
-            const SizedBox(height: 14),
-
-            GridView.count(
-              crossAxisCount: 2,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              mainAxisSpacing: 14,
-              crossAxisSpacing: 14,
-              childAspectRatio: 0.65,
-              children: [
-                buildProductCard(
-                  context,
-                  'Classic Shirt',
-                  '₱499',
-                  'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab',
-                  shirtKey,
-                ),
-
-                buildProductCard(
-                  context,
-                  'Wireless Headset',
-                  '₱899',
-                  'https://images.unsplash.com/photo-1505740420928-5e560c06d30e',
-                  headsetKey,
-                ),
-
-                buildProductCard(
-                  context,
-                  'Baby Essentials',
-                  '₱750',
-                  'https://images.unsplash.com/photo-1519689680058-324335c77eba',
-                  babyKey,
-                ),
-
-                buildProductCard(
-                  context,
-                  'Gold Jewelry',
-                  '₱1,299',
-                  'https://images.unsplash.com/photo-1515562141207-7a88fb7ce338',
-                  jewelryKey,
-                ),
-
-                buildProductCard(
-                  context,
-                  'Gaming Controller',
-                  '₱1,499',
-                  'https://images.unsplash.com/photo-1600080972464-8e5f35f63d08',
-                  controllerKey,
-                ),
-
-                buildProductCard(
-                  context,
-                  'Home Organizer',
-                  '₱650',
-                  'https://images.unsplash.com/photo-1555041469-a586c61ea9bc',
-                  organizerKey,
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ===========================================================
-  // SECTION HEADER
-  // ===========================================================
-
-  Widget buildSectionHeader(
-    String title,
-    String action,
-  ) {
-    return Row(
-      children: [
-        Expanded(
-          child: Text(
-            title,
-            style: const TextStyle(
-              color: darkMaroon,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ),
-        TextButton(
-          onPressed: () {},
-          child: Text(
-            action,
-            style: const TextStyle(
-              color: maroon,
-              fontSize: 11,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  // ===========================================================
-  // CATEGORY
-  // ===========================================================
-
-  Widget buildCategory(
-    String imageUrl,
-    String name,
-  ) {
-    return Container(
-      width: 84,
-      margin: const EdgeInsets.only(
-        right: 12,
-      ),
-      child: Column(
-        children: [
-          Container(
-            width: 62,
-            height: 62,
-            decoration: BoxDecoration(
-              color: fieldColor,
-              borderRadius: BorderRadius.circular(18),
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(18),
-              child: Image.network(
-                imageUrl,
-                width: 62,
-                height: 62,
-                fit: BoxFit.cover,
-                errorBuilder: (
-                  context,
-                  error,
-                  stackTrace,
-                ) {
-                  return const Icon(
-                    Icons.image_outlined,
-                    color: maroon,
-                    size: 28,
-                  );
-                },
-              ),
-            ),
-          ),
-
-          const SizedBox(height: 8),
-
-          Text(
-            name,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: darkText,
-              fontSize: 11,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ===========================================================
-  // PRODUCT CARD
-  // ===========================================================
-
-  Widget buildProductCard(
-    BuildContext context,
-    String name,
-    String price,
-    String imageUrl,
-    GlobalKey imageKey,
-  ) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: const Color(0xFFECDCD4),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // =====================================================
-          // PRODUCT IMAGE
-          // =====================================================
-
-          Expanded(
-            child: Container(
-              key: imageKey,
-              width: double.infinity,
-              decoration: const BoxDecoration(
-                color: fieldColor,
-                borderRadius: BorderRadius.vertical(
-                  top: Radius.circular(18),
-                ),
-              ),
-              child: ClipRRect(
-                borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(18),
-                ),
-                child: Image.network(
-                  imageUrl,
-                  width: double.infinity,
-                  height: double.infinity,
-                  fit: BoxFit.cover,
-                  loadingBuilder: (
-                    context,
-                    child,
-                    loadingProgress,
-                  ) {
-                    if (loadingProgress == null) {
-                      return child;
-                    }
-
-                    return const Center(
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: maroon,
-                      ),
-                    );
-                  },
-                  errorBuilder: (
-                    context,
-                    error,
-                    stackTrace,
-                  ) {
-                    return const Center(
-                      child: Icon(
-                        Icons.image_outlined,
-                        size: 55,
-                        color: lightMaroon,
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ),
-          ),
-
-          // =====================================================
-          // PRODUCT DETAILS
-          // =====================================================
-
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+              if (CartManager.instance.isNotEmpty) ...[
+                const SizedBox(height: 8),
                 Text(
-                  name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: darkText,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-
-                const SizedBox(height: 5),
-
-                Text(
-                  price,
-                  style: const TextStyle(
-                    color: maroon,
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-
-                const SizedBox(height: 10),
-
-                SizedBox(
-                  width: double.infinity,
-                  height: 38,
-                  child: ElevatedButton.icon(
-                    onPressed: () {
-                      // ADD TO CART
-                      CartManager.instance.addToCart(
-                        name: name,
-                        price: price,
-                        icon: Icons.shopping_bag_outlined,
-                      );
-
-                      // TOP NOTIFICATION
-                      showTopCartNotification(
-                        context,
-                        name,
-                      );
-
-                      // FLY PRODUCT PICTURE TO CART
-                      animateProductToCart(
-                        context,
-                        imageUrl,
-                        imageKey,
-                      );
-                    },
-                    icon: const Icon(
-                      Icons.add_shopping_cart_rounded,
-                      size: 16,
-                    ),
-                    label: const Text(
-                      'Add',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: maroon,
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
+                  'Bag subtotal: ${CartManager.instance.formattedTotalPrice}',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: LumearColors.dark,
                   ),
                 ),
               ],
-            ),
+            ],
           ),
-        ],
+        ),
       ),
-    );
-  }
-
-  // ===========================================================
-  // TOP NOTIFICATION
-  // ===========================================================
-
-  void showTopCartNotification(
-    BuildContext context,
-    String productName,
-  ) {
-    final overlay = Overlay.of(context);
-
-    late OverlayEntry entry;
-
-    entry = OverlayEntry(
-      builder: (overlayContext) {
-        return Positioned(
-          top: MediaQuery.of(overlayContext).padding.top + 10,
-          left: 18,
-          right: 18,
-          child: TweenAnimationBuilder<double>(
-            tween: Tween<double>(
-              begin: -80,
-              end: 0,
-            ),
-            duration: const Duration(
-              milliseconds: 350,
-            ),
-            curve: Curves.easeOutCubic,
-            builder: (
-              context,
-              value,
-              child,
-            ) {
-              return Transform.translate(
-                offset: Offset(0, value),
-                child: child,
-              );
-            },
-            child: Material(
-              color: Colors.transparent,
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 13,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: const Color(0xFFECDCD4),
-                  ),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Colors.black12,
-                      blurRadius: 14,
-                      offset: Offset(0, 5),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 35,
-                      height: 35,
-                      decoration: const BoxDecoration(
-                        color: Color(0xFFE9F6E8),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.check_rounded,
-                        color: Colors.green,
-                        size: 21,
-                      ),
-                    ),
-
-                    const SizedBox(width: 11),
-
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment:
-                            CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Added to Cart',
-                            style: TextStyle(
-                              color: darkMaroon,
-                              fontSize: 13,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-
-                          const SizedBox(height: 2),
-
-                          Text(
-                            productName,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: lightMaroon,
-                              fontSize: 11,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    const Icon(
-                      Icons.shopping_cart_outlined,
-                      color: maroon,
-                      size: 21,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        );
-      },
-    );
-
-    overlay.insert(entry);
-
-    Future.delayed(
-      const Duration(milliseconds: 2200),
-      () {
-        if (entry.mounted) {
-          entry.remove();
-        }
-      },
-    );
-  }
-
-  // ===========================================================
-  // FLY PRODUCT PICTURE TO TOP CART
-  // ===========================================================
-
-  void animateProductToCart(
-    BuildContext context,
-    String imageUrl,
-    GlobalKey imageKey,
-  ) {
-    final overlay = Overlay.of(context);
-
-    final sourceRenderBox =
-        imageKey.currentContext?.findRenderObject()
-            as RenderBox?;
-
-    final cartRenderBox =
-        widget.cartKey.currentContext?.findRenderObject()
-            as RenderBox?;
-
-    if (sourceRenderBox == null ||
-        cartRenderBox == null) {
-      return;
-    }
-
-    final sourcePosition =
-        sourceRenderBox.localToGlobal(
-      Offset.zero,
-    );
-
-    final cartPosition =
-        cartRenderBox.localToGlobal(
-      Offset.zero,
-    );
-
-    final sourceSize = sourceRenderBox.size;
-    final cartSize = cartRenderBox.size;
-
-    final startCenter = Offset(
-      sourcePosition.dx +
-          sourceSize.width / 2,
-      sourcePosition.dy +
-          sourceSize.height / 2,
-    );
-
-    final endCenter = Offset(
-      cartPosition.dx +
-          cartSize.width / 2,
-      cartPosition.dy +
-          cartSize.height / 2,
-    );
-
-    late OverlayEntry entry;
-
-    entry = OverlayEntry(
-      builder: (overlayContext) {
-        return TweenAnimationBuilder<double>(
-          tween: Tween<double>(
-            begin: 0,
-            end: 1,
-          ),
-          duration: const Duration(
-            milliseconds: 700,
-          ),
-          curve: Curves.easeInOutCubic,
-          onEnd: () {
-            if (entry.mounted) {
-              entry.remove();
-            }
-          },
-          builder: (
-            context,
-            progress,
-            child,
-          ) {
-            // =================================================
-            // CURVED PATH
-            // =================================================
-
-            final controlPoint = Offset(
-              (startCenter.dx + endCenter.dx) / 2,
-              startCenter.dy - 120,
-            );
-
-            final x =
-                ((1 - progress) *
-                        (1 - progress) *
-                        startCenter.dx) +
-                    (2 *
-                        (1 - progress) *
-                        progress *
-                        controlPoint.dx) +
-                    (progress *
-                        progress *
-                        endCenter.dx);
-
-            final y =
-                ((1 - progress) *
-                        (1 - progress) *
-                        startCenter.dy) +
-                    (2 *
-                        (1 - progress) *
-                        progress *
-                        controlPoint.dy) +
-                    (progress *
-                        progress *
-                        endCenter.dy);
-
-            // Shrinks while flying toward cart.
-            final scale =
-                1.0 - (progress * 0.72);
-
-            return Positioned(
-              left: x - 38,
-              top: y - 38,
-              child: Transform.scale(
-                scale: scale,
-                child: Container(
-                  width: 76,
-                  height: 76,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius:
-                        BorderRadius.circular(16),
-                    border: Border.all(
-                      color: const Color(0xFFECDCD4),
-                    ),
-                    boxShadow: const [
-                      BoxShadow(
-                        color: Colors.black12,
-                        blurRadius: 12,
-                        offset: Offset(0, 5),
-                      ),
-                    ],
-                  ),
-                  child: ClipRRect(
-                    borderRadius:
-                        BorderRadius.circular(16),
-                    child: Image.network(
-                      imageUrl,
-                      fit: BoxFit.cover,
-                      errorBuilder: (
-                        context,
-                        error,
-                        stackTrace,
-                      ) {
-                        return const Icon(
-                          Icons.shopping_bag_outlined,
-                          color: maroon,
-                          size: 30,
-                        );
-                      },
-                    ),
-                  ),
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
-
-    overlay.insert(entry);
-  }
+    ),
+  );
 }

@@ -1,5 +1,15 @@
+import 'design/lumear_theme.dart';
+import 'design/lumear_image.dart';
+
 import 'package:flutter/material.dart';
+
+import 'address_book_screen.dart';
+import 'address_manager.dart';
 import 'cart_manager.dart';
+import 'order_manager.dart';
+import 'services/buyer_data.dart';
+import 'services/api_service.dart';
+import 'design/components.dart';
 
 class CheckoutScreen extends StatefulWidget {
   const CheckoutScreen({super.key});
@@ -9,1236 +19,464 @@ class CheckoutScreen extends StatefulWidget {
 }
 
 class _CheckoutScreenState extends State<CheckoutScreen> {
-  static const Color cream = Color(0xFFFFF8F4);
-  static const Color maroon = Color(0xFF963B36);
-  static const Color darkMaroon = Color(0xFF721E1E);
-  static const Color lightMaroon = Color(0xFFC78F88);
-  static const Color fieldColor = Color(0xFFF9EEEA);
-  static const Color darkText = Color(0xFF4E3431);
+  static Color get cream => LumearColors.cream;
+  static Color get maroon => LumearColors.maroon;
+  static Color get darkMaroon => LumearColors.dark;
+  static Color get muted => LumearColors.light;
+  static Color get fieldColor => LumearColors.field;
+  static Color get ink => LumearColors.ink;
+  static Color get line => LumearColors.border;
 
-  final TextEditingController nameController =
-      TextEditingController();
+  SavedAddress? selectedAddress;
+  Map<String, dynamic>? quote;
+  String? quoteError;
+  bool reviewing = false;
+  bool submitting = false;
+  String checkoutKey = '';
 
-  final TextEditingController phoneController =
-      TextEditingController();
-
-  final TextEditingController addressController =
-      TextEditingController();
+  Future<void> reviewTotal() async {
+    if (!BuyerData.instance.connected) return;
+    final address = selectedAddress ?? AddressManager.instance.defaultAddress;
+    if (address == null) return;
+    setState(() {
+      reviewing = true;
+      quote = null;
+      quoteError = null;
+    });
+    try {
+      final result = await ApiService.post(
+        '/checkout/quote',
+        body: {'address_id': address.id, 'vouchers': []},
+      );
+      if (mounted) {
+        setState(() {
+          quote = Map<String, dynamic>.from(result);
+          checkoutKey = 'checkout-${DateTime.now().microsecondsSinceEpoch}';
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => quoteError = e.toString());
+    } finally {
+      if (mounted) setState(() => reviewing = false);
+    }
+  }
 
   @override
-  void dispose() {
-    nameController.dispose();
-    phoneController.dispose();
-    addressController.dispose();
-    super.dispose();
+  void initState() {
+    super.initState();
+    selectedAddress = AddressManager.instance.defaultAddress;
+    if (BuyerData.instance.connected) reviewTotal();
   }
 
-  double getItemPrice(CartItem item) {
-    final cleanedPrice = item.price
-        .replaceAll('₱', '')
-        .replaceAll(',', '')
-        .trim();
+  double get subtotal => CartManager.instance.totalPrice;
+  double get shippingFee => BuyerData.instance.connected
+      ? (quote?['stores'] as List? ?? []).fold<double>(
+          0,
+          (sum, g) => sum + (g['shipping'] as num) / 100,
+        )
+      : subtotal >= 1000
+      ? 0
+      : 50;
+  double get total => BuyerData.instance.connected && quote != null
+      ? (quote!['total'] as num) / 100
+      : subtotal + shippingFee;
 
-    return double.tryParse(cleanedPrice) ?? 0;
+  String money(double value) => '₱${value.toStringAsFixed(2)}';
+
+  Future<void> openAddressBook() async {
+    final result = await Navigator.push<SavedAddress?>(
+      context,
+      MaterialPageRoute(
+        builder: (_) =>
+            AddressBookScreen(selectedAddressId: selectedAddress?.id),
+      ),
+    );
+
+    if (!mounted) return;
+    setState(() {
+      selectedAddress = result ?? AddressManager.instance.defaultAddress;
+    });
+    await reviewTotal();
   }
 
-  double get subtotal {
-    return CartManager.instance.items.value.fold(
+  Future<void> placeOrder() async {
+    if (submitting || reviewing) return;
+    final address = selectedAddress ?? AddressManager.instance.defaultAddress;
+    final items = List<CartItem>.from(CartManager.instance.items);
+
+    if (items.isEmpty) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Your cart is empty.')));
+      return;
+    }
+
+    if (address == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please add and select a delivery address.'),
+        ),
+      );
+      return;
+    }
+
+    final orderSubtotal = items.fold<double>(
       0,
-      (total, item) {
-        return total +
-            (getItemPrice(item) * item.quantity);
-      },
+      (sum, item) => sum + item.totalPrice,
     );
-  }
-
-  double get shippingFee {
-    if (subtotal >= 1000) {
-      return 0;
-    }
-
-    return 50;
-  }
-
-  double get total {
-    return subtotal + shippingFee;
-  }
-
-  void placeOrder() {
-    final name = nameController.text.trim();
-    final phone = phoneController.text.trim();
-    final address = addressController.text.trim();
-
-    if (name.isEmpty ||
-        phone.isEmpty ||
-        address.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Please complete your delivery information.',
-          ),
-          backgroundColor: darkMaroon,
-        ),
+    final orderShipping = BuyerData.instance.connected
+        ? shippingFee
+        : orderSubtotal >= 1000
+        ? 0.0
+        : 50.0;
+    final orderTotal = orderSubtotal + orderShipping;
+    final orderDate = DateTime.now();
+    String orderNumber;
+    if (BuyerData.instance.connected) {
+      if (quote == null) {
+        await reviewTotal();
+        return;
+      }
+      setState(() => submitting = true);
+      try {
+        final result = await ApiService.post(
+          '/checkout',
+          body: {
+            'address_id': address.id,
+            'vouchers': [],
+            'payment_method': 'COD',
+            'note': '',
+            'idempotency_key': checkoutKey,
+            'expected_quote': quote,
+          },
+        );
+        orderNumber =
+            result['orders'].first['reference'] ?? result['orders'].first['id'];
+        await BuyerData.instance.refresh();
+        if (!mounted) return;
+      } catch (e) {
+        if (mounted) setState(() => quoteError = e.toString());
+        return;
+      } finally {
+        if (mounted) setState(() => submitting = false);
+      }
+    } else {
+      OrderManager.instance.addOrder(
+        items: items,
+        name: address.fullName,
+        phone: address.phone,
+        address: address.formattedAddress,
+        paymentMethod: 'COD',
+        subtotal: orderSubtotal,
+        shippingFee: orderShipping,
+        total: orderTotal,
       );
-
-      return;
+      orderNumber = OrderManager.instance.latestOrder!.orderId;
+      CartManager.instance.clearCart();
     }
 
-    final cartItems = List<CartItem>.from(
-      CartManager.instance.items.value,
-    );
-
-    if (cartItems.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Your cart is empty.',
-          ),
-          backgroundColor: darkMaroon,
-        ),
-      );
-
-      return;
-    }
-
-    final orderNumber =
-        'LUM-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
-
-    showDialog(
+    showDialog<void>(
       context: context,
       barrierDismissible: false,
-      builder: (dialogContext) {
-        return Dialog(
-          backgroundColor: cream,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(22),
-          ),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(
-              maxHeight: 650,
-            ),
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(22),
-              child: Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
-                children: [
-                  // =================================================
-                  // SUCCESS HEADER
-                  // =================================================
-
-                  Center(
-                    child: Column(
-                      children: [
-                        Container(
-                          width: 62,
-                          height: 62,
-                          decoration:
-                              const BoxDecoration(
-                            color: Color(0xFFE9F6E8),
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(
-                            Icons.check_rounded,
-                            color: Colors.green,
-                            size: 38,
-                          ),
+      builder: (dialogContext) => Dialog(
+        backgroundColor: cream,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxHeight: 680),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(22),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Column(
+                    children: [
+                      Container(
+                        width: 66,
+                        height: 66,
+                        decoration: const BoxDecoration(
+                          color: Color(0xFFE8F5E9),
+                          shape: BoxShape.circle,
                         ),
-
-                        const SizedBox(height: 12),
-
-                        const Text(
-                          'Order Confirmed!',
-                          style: TextStyle(
-                            color: darkMaroon,
-                            fontSize: 22,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-
-                        const SizedBox(height: 5),
-
-                        const Text(
-                          'Thank you for shopping with Lumear',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: lightMaroon,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  const SizedBox(height: 22),
-
-                  // =================================================
-                  // RECEIPT HEADER
-                  // =================================================
-
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius:
-                          BorderRadius.circular(16),
-                      border: Border.all(
-                        color: const Color(0xFFECDCD4),
-                      ),
-                    ),
-                    child: Column(
-                      children: [
-                        const Text(
-                          'LUMEAR',
-                          style: TextStyle(
-                            color: maroon,
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            letterSpacing: 2,
-                          ),
-                        ),
-
-                        const SizedBox(height: 3),
-
-                        const Text(
-                          'OFFICIAL RECEIPT',
-                          style: TextStyle(
-                            color: lightMaroon,
-                            fontSize: 9,
-                            fontWeight: FontWeight.bold,
-                            letterSpacing: 1,
-                          ),
-                        ),
-
-                        const SizedBox(height: 14),
-
-                        receiptInfoRow(
-                          'Order No.',
-                          orderNumber,
-                        ),
-
-                        const SizedBox(height: 6),
-
-                        receiptInfoRow(
-                          'Date',
-                          _formatReceiptDate(
-                            DateTime.now(),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // =================================================
-                  // DELIVERY INFORMATION
-                  // =================================================
-
-                  const Text(
-                    'Delivery Information',
-                    style: TextStyle(
-                      color: darkMaroon,
-                      fontSize: 15,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-
-                  const SizedBox(height: 10),
-
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: fieldColor,
-                      borderRadius:
-                          BorderRadius.circular(14),
-                    ),
-                    child: Column(
-                      crossAxisAlignment:
-                          CrossAxisAlignment.start,
-                      children: [
-                        receiptDetailRow(
-                          Icons.person_outline_rounded,
-                          name,
-                        ),
-
-                        const SizedBox(height: 8),
-
-                        receiptDetailRow(
-                          Icons.phone_outlined,
-                          phone,
-                        ),
-
-                        const SizedBox(height: 8),
-
-                        receiptDetailRow(
-                          Icons.location_on_outlined,
-                          address,
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  const SizedBox(height: 18),
-
-                  // =================================================
-                  // ITEMS PURCHASED
-                  // =================================================
-
-                  const Text(
-                    'Items Purchased',
-                    style: TextStyle(
-                      color: darkMaroon,
-                      fontSize: 15,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-
-                  const SizedBox(height: 10),
-
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius:
-                          BorderRadius.circular(14),
-                      border: Border.all(
-                        color: const Color(0xFFECDCD4),
-                      ),
-                    ),
-                    child: Column(
-                      children: [
-                        ...cartItems.map(
-                          (item) {
-                            final itemPrice =
-                                getItemPrice(item);
-
-                            final itemTotal =
-                                itemPrice *
-                                    item.quantity;
-
-                            return Padding(
-                              padding:
-                                  const EdgeInsets.only(
-                                bottom: 13,
-                              ),
-                              child: Row(
-                                crossAxisAlignment:
-                                    CrossAxisAlignment.start,
-                                children: [
-                                  Container(
-                                    width: 42,
-                                    height: 42,
-                                    decoration:
-                                        BoxDecoration(
-                                      color: fieldColor,
-                                      borderRadius:
-                                          BorderRadius.circular(
-                                        10,
-                                      ),
-                                    ),
-                                    child: Icon(
-                                      item.icon,
-                                      color: maroon,
-                                      size: 22,
-                                    ),
-                                  ),
-
-                                  const SizedBox(
-                                    width: 10,
-                                  ),
-
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment
-                                              .start,
-                                      children: [
-                                        Text(
-                                          item.name,
-                                          maxLines: 2,
-                                          overflow:
-                                              TextOverflow
-                                                  .ellipsis,
-                                          style:
-                                              const TextStyle(
-                                            color: darkText,
-                                            fontSize: 13,
-                                            fontWeight:
-                                                FontWeight
-                                                    .w600,
-                                          ),
-                                        ),
-
-                                        const SizedBox(
-                                          height: 3,
-                                        ),
-
-                                        Text(
-                                          '₱${itemPrice.toStringAsFixed(2)} × ${item.quantity}',
-                                          style:
-                                              const TextStyle(
-                                            color:
-                                                lightMaroon,
-                                            fontSize: 11,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-
-                                  const SizedBox(
-                                    width: 8,
-                                  ),
-
-                                  Text(
-                                    '₱${itemTotal.toStringAsFixed(2)}',
-                                    style:
-                                        const TextStyle(
-                                      color: maroon,
-                                      fontSize: 13,
-                                      fontWeight:
-                                          FontWeight.bold,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            );
-                          },
-                        ),
-
-                        const Divider(
-                          color: Color(0xFFECDCD4),
-                        ),
-
-                        const SizedBox(height: 8),
-
-                        receiptAmountRow(
-                          'Subtotal',
-                          '₱${subtotal.toStringAsFixed(2)}',
-                        ),
-
-                        const SizedBox(height: 8),
-
-                        receiptAmountRow(
-                          'Shipping Fee',
-                          shippingFee == 0
-                              ? 'FREE'
-                              : '₱${shippingFee.toStringAsFixed(2)}',
-                        ),
-
-                        const SizedBox(height: 10),
-
-                        const Divider(
-                          color: Color(0xFFECDCD4),
-                        ),
-
-                        const SizedBox(height: 10),
-
-                        Row(
-                          mainAxisAlignment:
-                              MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text(
-                              'TOTAL',
-                              style: TextStyle(
-                                color: darkText,
-                                fontSize: 16,
-                                fontWeight:
-                                    FontWeight.bold,
-                              ),
-                            ),
-
-                            Text(
-                              '₱${total.toStringAsFixed(2)}',
-                              style: const TextStyle(
-                                color: maroon,
-                                fontSize: 20,
-                                fontWeight:
-                                    FontWeight.bold,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  const SizedBox(height: 18),
-
-                  // =================================================
-                  // PAYMENT METHOD
-                  // =================================================
-
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: fieldColor,
-                      borderRadius:
-                          BorderRadius.circular(14),
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 42,
-                          height: 42,
-                          decoration:
-                              const BoxDecoration(
-                            color: Colors.white,
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(
-                            Icons.payments_outlined,
-                            color: maroon,
-                            size: 22,
-                          ),
-                        ),
-
-                        const SizedBox(width: 11),
-
-                        const Expanded(
-                          child: Column(
-                            crossAxisAlignment:
-                                CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Payment Method',
-                                style: TextStyle(
-                                  color: lightMaroon,
-                                  fontSize: 10,
-                                ),
-                              ),
-
-                              SizedBox(height: 3),
-
-                              Text(
-                                'Cash on Delivery',
-                                style: TextStyle(
-                                  color: darkText,
-                                  fontSize: 13,
-                                  fontWeight:
-                                      FontWeight.bold,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-
-                        const Icon(
-                          Icons.check_circle_rounded,
+                        child: const Icon(
+                          Icons.check_rounded,
                           color: Colors.green,
-                          size: 22,
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  const SizedBox(height: 20),
-
-                  // =================================================
-                  // DONE BUTTON
-                  // =================================================
-
-                  SizedBox(
-                    width: double.infinity,
-                    height: 48,
-                    child: ElevatedButton(
-                      onPressed: () {
-                        CartManager.instance.clearCart();
-
-                        Navigator.pop(dialogContext);
-
-                        Navigator.pop(context);
-                      },
-                      style:
-                          ElevatedButton.styleFrom(
-                        backgroundColor: maroon,
-                        foregroundColor: Colors.white,
-                        elevation: 0,
-                        shape:
-                            RoundedRectangleBorder(
-                          borderRadius:
-                              BorderRadius.circular(13),
+                          size: 38,
                         ),
                       ),
-                      child: const Text(
-                        'DONE',
+                      const SizedBox(height: 14),
+                      Text(
+                        'Order Confirmed!',
                         style: TextStyle(
-                          fontSize: 14,
+                          color: darkMaroon,
+                          fontFamily: 'CormorantGaramond',
+                          fontSize: 22,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
-                    ),
+                      const SizedBox(height: 5),
+                      Text(
+                        'Thank you for shopping with Lumear.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: muted, fontSize: 12),
+                      ),
+                    ],
                   ),
-
-                  const SizedBox(height: 8),
-
-                  const Center(
-                    child: Text(
-                      'Please keep this receipt for your records.',
-                      style: TextStyle(
-                        color: lightMaroon,
-                        fontSize: 10,
+                ),
+                const SizedBox(height: 22),
+                _receiptCard(
+                  title: 'ORDER DETAILS',
+                  children: [
+                    _receiptRow('Order number', orderNumber),
+                    _receiptRow('Date', _formatDate(orderDate)),
+                    _receiptRow('Payment', 'Cash on Delivery'),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                _receiptCard(
+                  title: 'DELIVERY ADDRESS',
+                  children: [
+                    Text(
+                      address.fullName,
+                      style: TextStyle(color: ink, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(address.phone, style: TextStyle(color: muted)),
+                    const SizedBox(height: 4),
+                    Text(
+                      address.formattedAddress,
+                      style: TextStyle(color: ink, height: 1.4),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                _receiptCard(
+                  title: 'PAYMENT SUMMARY',
+                  children: [
+                    _receiptRow('Subtotal', money(orderSubtotal)),
+                    _receiptRow(
+                      'Shipping fee',
+                      orderShipping == 0 ? 'FREE' : money(orderShipping),
+                    ),
+                    Divider(color: line, height: 22),
+                    _receiptRow('TOTAL', money(orderTotal), isTotal: true),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      Navigator.pop(dialogContext);
+                      Navigator.pop(context);
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: LumearColors.action,
+                      foregroundColor: LumearColors.ivory,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(13),
                       ),
                     ),
+                    child: const Text(
+                      'DONE',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
                   ),
-                ],
+                ),
+                const SizedBox(height: 8),
+                Center(
+                  child: Text(
+                    'Please keep your order details for reference.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: muted, fontSize: 10),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _formatDate(DateTime date) {
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    return '${months[date.month - 1]} ${date.day}, ${date.year}';
+  }
+
+  Widget _receiptCard({required String title, required List<Widget> children}) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+        color: LumearColors.surface,
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(color: line),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: TextStyle(
+              color: muted,
+              fontSize: 10,
+              letterSpacing: 1,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 12),
+          ...children,
+        ],
+      ),
+    );
+  }
+
+  Widget _receiptRow(String label, String value, {bool isTotal = false}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: TextStyle(
+                color: isTotal ? darkMaroon : muted,
+                fontSize: isTotal ? 13 : 11,
+                fontWeight: isTotal ? FontWeight.bold : FontWeight.normal,
               ),
             ),
           ),
-        );
-      },
-    );
-  }
-
-  String _formatReceiptDate(DateTime date) {
-    const months = [
-      'January',
-      'February',
-      'March',
-      'April',
-      'May',
-      'June',
-      'July',
-      'August',
-      'September',
-      'October',
-      'November',
-      'December',
-    ];
-
-    final hour = date.hour > 12
-        ? date.hour - 12
-        : date.hour == 0
-            ? 12
-            : date.hour;
-
-    final minute =
-        date.minute.toString().padLeft(2, '0');
-
-    final period =
-        date.hour >= 12 ? 'PM' : 'AM';
-
-    return '${months[date.month - 1]} '
-        '${date.day}, ${date.year} • '
-        '$hour:$minute $period';
-  }
-
-  Widget receiptInfoRow(
-    String label,
-    String value,
-  ) {
-    return Row(
-      mainAxisAlignment:
-          MainAxisAlignment.spaceBetween,
-      children: [
-        Text(
-          label,
-          style: const TextStyle(
-            color: lightMaroon,
-            fontSize: 11,
-          ),
-        ),
-
-        Flexible(
-          child: Text(
-            value,
-            textAlign: TextAlign.right,
-            style: const TextStyle(
-              color: darkText,
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
+          const SizedBox(width: 12),
+          Flexible(
+            child: Text(
+              value,
+              textAlign: TextAlign.right,
+              style: TextStyle(
+                color: isTotal ? maroon : ink,
+                fontSize: isTotal ? 16 : 11,
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ),
-        ),
-      ],
-    );
-  }
-
-  Widget receiptDetailRow(
-    IconData icon,
-    String text,
-  ) {
-    return Row(
-      crossAxisAlignment:
-          CrossAxisAlignment.start,
-      children: [
-        Icon(
-          icon,
-          color: maroon,
-          size: 18,
-        ),
-
-        const SizedBox(width: 9),
-
-        Expanded(
-          child: Text(
-            text,
-            style: const TextStyle(
-              color: darkText,
-              fontSize: 12,
-              height: 1.3,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget receiptAmountRow(
-    String label,
-    String value,
-  ) {
-    return Row(
-      mainAxisAlignment:
-          MainAxisAlignment.spaceBetween,
-      children: [
-        Text(
-          label,
-          style: const TextStyle(
-            color: Colors.grey,
-            fontSize: 12,
-          ),
-        ),
-
-        Text(
-          value,
-          style: const TextStyle(
-            color: darkText,
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    LumearAppearance.watch(context);
     return Scaffold(
       backgroundColor: cream,
-
       appBar: AppBar(
         backgroundColor: cream,
         elevation: 0,
-        centerTitle: true,
-
-        title: const Text(
+        scrolledUnderElevation: 0,
+        leading: IconButton(
+          onPressed: () => Navigator.pop(context),
+          icon: Icon(Icons.arrow_back_ios_new_rounded, color: darkMaroon),
+        ),
+        title: Text(
           'Checkout',
           style: TextStyle(
             color: darkMaroon,
             fontWeight: FontWeight.bold,
+            fontFamily: 'CormorantGaramond',
+            fontSize: 21,
           ),
         ),
-
-        iconTheme: const IconThemeData(
-          color: darkMaroon,
-        ),
       ),
+      body: ListenableBuilder(
+        listenable: CartManager.instance,
+        builder: (context, _) {
+          final items = CartManager.instance.items;
 
-      body: ValueListenableBuilder<List<CartItem>>(
-        valueListenable:
-            CartManager.instance.items,
-
-        builder: (
-          context,
-          items,
-          child,
-        ) {
-          if (items.isEmpty) {
-            return const Center(
-              child: Column(
-                mainAxisSize:
-                    MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.shopping_cart_outlined,
-                    color: lightMaroon,
-                    size: 70,
-                  ),
-
-                  SizedBox(height: 15),
-
-                  Text(
-                    'Your cart is empty.',
-                    style: TextStyle(
-                      color: darkText,
-                      fontSize: 17,
-                      fontWeight:
-                          FontWeight.bold,
-                    ),
-                  ),
-                ],
-              ),
-            );
-          }
-
-          return ListView(
-            physics:
-                const BouncingScrollPhysics(),
-
-            padding:
-                const EdgeInsets.fromLTRB(
-              18,
-              10,
-              18,
-              30,
-            ),
-
+          return Column(
             children: [
-              // ==================================================
-              // DELIVERY ADDRESS
-              // ==================================================
-
-              sectionTitle(
-                Icons.location_on_outlined,
-                'Delivery Address',
-              ),
-
-              const SizedBox(height: 12),
-
-              Container(
-                padding:
-                    const EdgeInsets.all(16),
-
-                decoration:
-                    BoxDecoration(
-                  color: Colors.white,
-
-                  borderRadius:
-                      BorderRadius.circular(18),
-
-                  border: Border.all(
-                    color:
-                        const Color(
-                      0xFFECDCD4,
-                    ),
-                  ),
-                ),
-
-                child: Column(
-                  children: [
-                    TextField(
-                      controller:
-                          nameController,
-
-                      decoration:
-                          inputDecoration(
-                        'Full Name',
-                        Icons
-                            .person_outline_rounded,
-                      ),
-                    ),
-
-                    const SizedBox(
-                      height: 12,
-                    ),
-
-                    TextField(
-                      controller:
-                          phoneController,
-
-                      keyboardType:
-                          TextInputType.phone,
-
-                      decoration:
-                          inputDecoration(
-                        'Phone Number',
-                        Icons.phone_outlined,
-                      ),
-                    ),
-
-                    const SizedBox(
-                      height: 12,
-                    ),
-
-                    TextField(
-                      controller:
-                          addressController,
-
-                      maxLines: 3,
-
-                      decoration:
-                          inputDecoration(
-                        'Complete Address',
-                        Icons.home_outlined,
-                      ),
+              if (reviewing || submitting) const LinearProgressIndicator(),
+              if (quoteError != null)
+                MaterialBanner(
+                  content: Text(quoteError!),
+                  actions: [
+                    TextButton(
+                      onPressed: reviewTotal,
+                      child: const Text('Retry'),
                     ),
                   ],
                 ),
-              ),
-
-              const SizedBox(
-                height: 25,
-              ),
-
-              // ==================================================
-              // PAYMENT METHOD
-              // ==================================================
-
-              sectionTitle(
-                Icons.payments_outlined,
-                'Payment Method',
-              ),
-
-              const SizedBox(height: 12),
-
-              Container(
-                padding:
-                    const EdgeInsets.all(16),
-
-                decoration:
-                    BoxDecoration(
-                  color: Colors.white,
-
-                  borderRadius:
-                      BorderRadius.circular(18),
-
-                  border: Border.all(
-                    color:
-                        const Color(
-                      0xFFECDCD4,
-                    ),
-                  ),
-                ),
-
-                child: Row(
-                  children: [
-                    Container(
-                      width: 52,
-                      height: 52,
-
-                      decoration:
-                          BoxDecoration(
-                        color: fieldColor,
-
-                        borderRadius:
-                            BorderRadius.circular(
-                          14,
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _pageIntro(items.length),
+                      const SizedBox(height: 18),
+                      _sectionHeading(
+                        icon: Icons.location_on_outlined,
+                        title: 'Delivery Address',
+                        action: 'CHANGE',
+                        onAction: openAddressBook,
+                      ),
+                      const SizedBox(height: 10),
+                      _addressCard(),
+                      const SizedBox(height: 22),
+                      _sectionHeading(
+                        icon: Icons.shopping_bag_outlined,
+                        title: 'Products Ordered',
+                      ),
+                      const SizedBox(height: 10),
+                      _productsCard(items),
+                      const SizedBox(height: 22),
+                      _sectionHeading(
+                        icon: Icons.confirmation_number_outlined,
+                        title: 'Vouchers',
+                      ),
+                      const SizedBox(height: 10),
+                      _voucherCard(),
+                      const SizedBox(height: 22),
+                      _sectionHeading(
+                        icon: Icons.account_balance_wallet_outlined,
+                        title: 'Payment Method',
+                      ),
+                      const SizedBox(height: 10),
+                      _paymentCard(),
+                      const SizedBox(height: 22),
+                      _sectionHeading(
+                        icon: Icons.receipt_long_outlined,
+                        title: 'Order Summary',
+                      ),
+                      const SizedBox(height: 10),
+                      _summaryCard(),
+                      const SizedBox(height: 10),
+                      Center(
+                        child: Text(
+                          'Please review your order details before placing your order.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: muted, fontSize: 11),
                         ),
                       ),
-
-                      child: const Icon(
-                        Icons.payments_outlined,
-                        color: maroon,
-                        size: 27,
-                      ),
-                    ),
-
-                    const SizedBox(
-                      width: 13,
-                    ),
-
-                    const Expanded(
-                      child: Column(
-                        crossAxisAlignment:
-                            CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Cash on Delivery',
-                            style: TextStyle(
-                              color: darkText,
-                              fontSize: 14,
-                              fontWeight:
-                                  FontWeight.bold,
-                            ),
-                          ),
-
-                          SizedBox(
-                            height: 4,
-                          ),
-
-                          Text(
-                            'Pay when your order arrives',
-                            style: TextStyle(
-                              color: Colors.grey,
-                              fontSize: 11,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    const Icon(
-                      Icons.radio_button_checked,
-                      color: maroon,
-                      size: 24,
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(
-                height: 25,
-              ),
-
-              // ==================================================
-              // ORDER SUMMARY
-              // ==================================================
-
-              sectionTitle(
-                Icons.receipt_long_outlined,
-                'Order Summary',
-              ),
-
-              const SizedBox(height: 12),
-
-              Container(
-                padding:
-                    const EdgeInsets.all(16),
-
-                decoration:
-                    BoxDecoration(
-                  color: Colors.white,
-
-                  borderRadius:
-                      BorderRadius.circular(18),
-
-                  border: Border.all(
-                    color:
-                        const Color(
-                      0xFFECDCD4,
-                    ),
-                  ),
-                ),
-
-                child: Column(
-                  children: [
-                    ...items.map(
-                      (item) {
-                        return Padding(
-                          padding:
-                              const EdgeInsets
-                                  .only(
-                            bottom: 14,
-                          ),
-
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 60,
-                                height: 60,
-
-                                decoration:
-                                    BoxDecoration(
-                                  color:
-                                      fieldColor,
-
-                                  borderRadius:
-                                      BorderRadius
-                                          .circular(
-                                    13,
-                                  ),
-                                ),
-
-                                child: Icon(
-                                  item.icon,
-                                  color: maroon,
-                                  size: 30,
-                                ),
-                              ),
-
-                              const SizedBox(
-                                width: 12,
-                              ),
-
-                              Expanded(
-                                child:
-                                    Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment
-                                          .start,
-
-                                  children: [
-                                    Text(
-                                      item.name,
-
-                                      maxLines:
-                                          2,
-
-                                      overflow:
-                                          TextOverflow
-                                              .ellipsis,
-
-                                      style:
-                                          const TextStyle(
-                                        color:
-                                            darkText,
-
-                                        fontSize:
-                                            14,
-
-                                        fontWeight:
-                                            FontWeight
-                                                .w600,
-                                      ),
-                                    ),
-
-                                    const SizedBox(
-                                      height: 5,
-                                    ),
-
-                                    Text(
-                                      'Qty: ${item.quantity}',
-
-                                      style:
-                                          const TextStyle(
-                                        color:
-                                            lightMaroon,
-
-                                        fontSize:
-                                            12,
-                                      ),
-                                    ),
-
-                                    const SizedBox(
-                                      height: 5,
-                                    ),
-
-                                    Text(
-                                      item.price,
-
-                                      style:
-                                          const TextStyle(
-                                        color:
-                                            maroon,
-
-                                        fontSize:
-                                            13,
-
-                                        fontWeight:
-                                            FontWeight
-                                                .bold,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
-
-                    const Divider(
-                      color:
-                          Color(0xFFECDCD4),
-                    ),
-
-                    const SizedBox(
-                      height: 10,
-                    ),
-
-                    summaryRow(
-                      'Subtotal',
-                      '₱${subtotal.toStringAsFixed(2)}',
-                    ),
-
-                    const SizedBox(
-                      height: 10,
-                    ),
-
-                    summaryRow(
-                      'Shipping Fee',
-                      shippingFee == 0
-                          ? 'FREE'
-                          : '₱${shippingFee.toStringAsFixed(2)}',
-                    ),
-
-                    const SizedBox(
-                      height: 12,
-                    ),
-
-                    const Divider(
-                      color:
-                          Color(0xFFECDCD4),
-                    ),
-
-                    const SizedBox(
-                      height: 12,
-                    ),
-
-                    Row(
-                      mainAxisAlignment:
-                          MainAxisAlignment
-                              .spaceBetween,
-
-                      children: [
-                        const Text(
-                          'Total',
-
-                          style: TextStyle(
-                            color: darkText,
-                            fontSize: 18,
-                            fontWeight:
-                                FontWeight.bold,
-                          ),
-                        ),
-
-                        Text(
-                          '₱${total.toStringAsFixed(2)}',
-
-                          style: const TextStyle(
-                            color: maroon,
-                            fontSize: 20,
-                            fontWeight:
-                                FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(
-                height: 25,
-              ),
-
-              // ==================================================
-              // PLACE ORDER BUTTON
-              // ==================================================
-
-              SizedBox(
-                height: 55,
-                width: double.infinity,
-
-                child: ElevatedButton(
-                  onPressed: placeOrder,
-
-                  style:
-                      ElevatedButton.styleFrom(
-                    backgroundColor: maroon,
-                    foregroundColor:
-                        Colors.white,
-
-                    elevation: 0,
-
-                    shape:
-                        RoundedRectangleBorder(
-                      borderRadius:
-                          BorderRadius.circular(
-                        16,
-                      ),
-                    ),
-                  ),
-
-                  child: Text(
-                    'PLACE ORDER • ₱${total.toStringAsFixed(2)}',
-
-                    style:
-                        const TextStyle(
-                      fontSize: 14,
-                      fontWeight:
-                          FontWeight.bold,
-                    ),
+                    ],
                   ),
                 ),
               ),
+              _bottomPlaceOrder(items.isNotEmpty),
             ],
           );
         },
@@ -1246,100 +484,590 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     );
   }
 
-  Widget sectionTitle(
-    IconData icon,
-    String title,
-  ) {
+  Widget _pageIntro(int itemCount) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      const PageHeading('Almost yours.', eyebrow: 'THE FINAL LITTLE DETAILS'),
+      Row(
+        children: [
+          for (final step in ['01  Bag', '02  Delivery', '03  Confirm'])
+            Expanded(
+              child: Container(
+                margin: const EdgeInsets.only(right: 6),
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                decoration: BoxDecoration(
+                  border: Border(bottom: BorderSide(color: maroon, width: 2)),
+                ),
+                child: Text(
+                  step,
+                  style: TextStyle(
+                    color: darkMaroon,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+      const SizedBox(height: 14),
+      Text(
+        '$itemCount items · Cash on delivery',
+        style: TextStyle(fontSize: 12, color: ink),
+      ),
+    ],
+  );
+
+  Widget _sectionHeading({
+    required IconData icon,
+    required String title,
+    String? action,
+    VoidCallback? onAction,
+  }) {
     return Row(
       children: [
-        Icon(
-          icon,
-          color: maroon,
-          size: 22,
+        Icon(icon, color: maroon, size: 22),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            title,
+            style: TextStyle(
+              color: darkMaroon,
+              fontSize: 17,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
         ),
+        if (action != null)
+          TextButton(
+            onPressed: onAction,
+            child: Text(
+              action,
+              style: TextStyle(
+                color: maroon,
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
 
-        const SizedBox(
-          width: 8,
+  Widget _addressCard() {
+    final address = selectedAddress ?? AddressManager.instance.defaultAddress;
+
+    if (address == null) {
+      return _whiteCard(
+        child: InkWell(
+          onTap: openAddressBook,
+          borderRadius: BorderRadius.circular(15),
+          child: Row(
+            children: [
+              CircleAvatar(
+                backgroundColor: fieldColor,
+                child: Icon(Icons.add_location_alt_outlined, color: maroon),
+              ),
+              SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Add delivery address',
+                      style: TextStyle(
+                        color: darkMaroon,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    SizedBox(height: 4),
+                    Text(
+                      'Add your recipient details and full address.',
+                      style: TextStyle(color: muted, fontSize: 11),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right_rounded, color: muted),
+            ],
+          ),
         ),
+      );
+    }
 
-        Text(
-          title,
+    return _whiteCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.location_on_rounded, color: maroon, size: 24),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Wrap(
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: 7,
+                      runSpacing: 5,
+                      children: [
+                        Text(
+                          address.fullName,
+                          style: TextStyle(
+                            color: ink,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 7,
+                            vertical: 3,
+                          ),
+                          decoration: BoxDecoration(
+                            color: fieldColor,
+                            borderRadius: BorderRadius.circular(5),
+                          ),
+                          child: Text(
+                            address.label,
+                            style: TextStyle(
+                              color: maroon,
+                              fontSize: 9,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      address.phone,
+                      style: TextStyle(color: muted, fontSize: 12),
+                    ),
+                    const SizedBox(height: 9),
+                    Text(
+                      address.formattedAddress,
+                      style: TextStyle(color: ink, fontSize: 12, height: 1.45),
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                tooltip: 'Edit address',
+                onPressed: openAddressBook,
+                icon: Icon(Icons.edit_outlined, color: maroon, size: 19),
+              ),
+            ],
+          ),
+          const SizedBox(height: 13),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton(
+              onPressed: openAddressBook,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: maroon,
+                side: BorderSide(color: line),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              child: const Text(
+                'CHANGE DELIVERY ADDRESS',
+                style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
-          style: const TextStyle(
-            color: darkMaroon,
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
+  Widget _productsCard(List<CartItem> items) {
+    return _whiteCard(
+      child: items.isEmpty
+          ? Padding(
+              padding: EdgeInsets.all(12),
+              child: Center(
+                child: Text(
+                  'Your cart is empty.',
+                  style: TextStyle(color: muted),
+                ),
+              ),
+            )
+          : Column(
+              children: [
+                for (var i = 0; i < items.length; i++) ...[
+                  if (i > 0) Divider(color: line, height: 22),
+                  _productRow(items[i]),
+                ],
+                Divider(color: line, height: 22),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Items subtotal',
+                        style: TextStyle(color: muted, fontSize: 12),
+                      ),
+                    ),
+                    Text(
+                      money(subtotal),
+                      style: TextStyle(
+                        color: maroon,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+    );
+  }
+
+  Widget _productRow(CartItem item) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            width: 76,
+            height: 82,
+            color: fieldColor,
+            child: item.imageUrl != null && item.imageUrl!.isNotEmpty
+                ? LumearImage(
+                    item.imageUrl!,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, _, _) =>
+                        Icon(item.icon, color: muted, size: 32),
+                  )
+                : Icon(item.icon, color: muted, size: 32),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                item.name,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: ink,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                  height: 1.3,
+                ),
+              ),
+              if (item.variantText.isNotEmpty) ...[
+                const SizedBox(height: 5),
+                Text(
+                  item.variantText,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: muted, fontSize: 10),
+                ),
+              ],
+              const SizedBox(height: 6),
+              Text(
+                '${money(item.price)} × ${item.quantity}',
+                style: TextStyle(color: muted, fontSize: 11),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                money(item.totalPrice),
+                style: TextStyle(
+                  color: maroon,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                ),
+              ),
+            ],
           ),
         ),
       ],
     );
   }
 
-  InputDecoration inputDecoration(
-    String hint,
-    IconData icon,
-  ) {
-    return InputDecoration(
-      hintText: hint,
-
-      hintStyle: const TextStyle(
-        color: lightMaroon,
-        fontSize: 12,
-      ),
-
-      prefixIcon: Icon(
-        icon,
-        color: maroon,
-        size: 20,
-      ),
-
-      filled: true,
-
-      fillColor: fieldColor,
-
-      border: OutlineInputBorder(
-        borderRadius:
-            BorderRadius.circular(13),
-
-        borderSide: BorderSide.none,
-      ),
-
-      contentPadding:
-          const EdgeInsets.symmetric(
-        horizontal: 14,
-        vertical: 14,
+  Widget _voucherCard() {
+    return _whiteCard(
+      child: InkWell(
+        onTap: () {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Voucher selection will be connected in a future update.',
+              ),
+            ),
+          );
+        },
+        borderRadius: BorderRadius.circular(14),
+        child: Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: fieldColor,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(Icons.local_offer_outlined, color: maroon),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Apply a voucher',
+                    style: TextStyle(
+                      color: ink,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                    ),
+                  ),
+                  SizedBox(height: 4),
+                  Text(
+                    'Choose an available discount or shipping voucher.',
+                    style: TextStyle(color: muted, fontSize: 11, height: 1.4),
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right_rounded, color: muted),
+          ],
+        ),
       ),
     );
   }
 
-  Widget summaryRow(
-    String title,
-    String value,
-  ) {
-    return Row(
-      mainAxisAlignment:
-          MainAxisAlignment.spaceBetween,
-
-      children: [
-        Text(
-          title,
-
-          style: const TextStyle(
-            color: Colors.grey,
-            fontSize: 13,
+  Widget _paymentCard() {
+    return _whiteCard(
+      child: Row(
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: fieldColor,
+              borderRadius: BorderRadius.circular(13),
+            ),
+            child: Icon(Icons.payments_outlined, color: maroon, size: 25),
           ),
-        ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Cash on Delivery (COD)',
+                  style: TextStyle(
+                    color: ink,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                  ),
+                ),
+                SizedBox(height: 4),
+                Text(
+                  'Pay when your order arrives.',
+                  style: TextStyle(color: muted, fontSize: 11),
+                ),
+              ],
+            ),
+          ),
+          Icon(Icons.check_circle_rounded, color: maroon, size: 23),
+        ],
+      ),
+    );
+  }
 
+  Widget _summaryCard() {
+    return _whiteCard(
+      child: Column(
+        children: [
+          _summaryRow('Subtotal', money(subtotal)),
+          const SizedBox(height: 13),
+          _summaryRow(
+            'Shipping fee',
+            shippingFee == 0 ? 'FREE' : money(shippingFee),
+            valueColor: shippingFee == 0 ? Colors.green.shade700 : ink,
+          ),
+          const SizedBox(height: 13),
+          if (shippingFee == 0)
+            Container(
+              width: double.infinity,
+              margin: const EdgeInsets.only(bottom: 13),
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFEAF5E9),
+                borderRadius: BorderRadius.circular(9),
+              ),
+              child: const Row(
+                children: [
+                  Icon(
+                    Icons.check_circle_outline,
+                    color: Colors.green,
+                    size: 17,
+                  ),
+                  SizedBox(width: 7),
+                  Expanded(
+                    child: Text(
+                      'You unlocked free shipping!',
+                      style: TextStyle(color: Color(0xFF367A3B), fontSize: 11),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          Divider(color: line, height: 22),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Total Payment',
+                  style: TextStyle(
+                    color: darkMaroon,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 15,
+                  ),
+                ),
+              ),
+              Text(
+                money(total),
+                style: TextStyle(
+                  color: maroon,
+                  fontWeight: FontWeight.bold,
+                  fontFamily: 'CormorantGaramond',
+                  fontSize: 22,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 7),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              'Shipping is free for orders of ₱1,000 or more.',
+              style: TextStyle(color: muted, fontSize: 10),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _summaryRow(String label, String value, {Color? valueColor}) {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(label, style: TextStyle(color: muted, fontSize: 12)),
+        ),
         Text(
           value,
-
-          style: const TextStyle(
-            color: darkText,
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
+          style: TextStyle(
+            color: valueColor ?? ink,
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
           ),
         ),
       ],
+    );
+  }
+
+  Widget _whiteCard({required Widget child}) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+        color: LumearColors.surface,
+        borderRadius: BorderRadius.circular(17),
+        border: Border.all(color: line),
+        boxShadow: [
+          BoxShadow(
+            color: darkMaroon.withValues(alpha: 0.025),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: child,
+    );
+  }
+
+  Widget _bottomPlaceOrder(bool enabled) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(18, 12, 18, 12),
+      decoration: BoxDecoration(
+        color: LumearColors.surface,
+        border: Border(top: BorderSide(color: line)),
+        boxShadow: [
+          BoxShadow(
+            color: Color(0x0D651D32),
+            blurRadius: 12,
+            offset: Offset(0, -4),
+          ),
+        ],
+      ),
+      child: SafeArea(
+        top: false,
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Total Payment',
+                    style: TextStyle(color: muted, fontSize: 10),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    money(total),
+                    style: TextStyle(
+                      color: maroon,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 19,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              flex: 2,
+              child: SizedBox(
+                height: 50,
+                child: ElevatedButton(
+                  onPressed:
+                      enabled &&
+                          !reviewing &&
+                          !submitting &&
+                          (!BuyerData.instance.connected || quote != null)
+                      ? placeOrder
+                      : null,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: LumearColors.action,
+                    disabledBackgroundColor: muted,
+                    foregroundColor: LumearColors.ivory,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(13),
+                    ),
+                  ),
+                  child: const Text(
+                    'PLACE ORDER',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

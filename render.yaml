@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: lumear-api
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    healthCheckPath: /api/health
+    envVars:
+      - key: MYSQL_HOST
+        sync: false
+      - key: MYSQL_PORT
+        sync: false
+      - key: MYSQL_DATABASE
+        sync: false
+      - key: MYSQL_USER
+        sync: false
+      - key: MYSQL_PASSWORD
+        sync: false
+      - key: MYSQL_SSL_REQUIRED
+        value: 'true'
+      - key: MYSQL_SSL_CA_PEM
+        sync: false
+      - key: PRIVATE_UPLOAD_STORAGE
+        value: mysql
+      - key: EMAIL_OTP_SECRET
+        sync: false

@@ -1,0 +1,36 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Lumear · MySQL (Android emulator)",
+      "request": "launch",
+      "type": "dart",
+      "program": "lib/main.dart",
+      "toolArgs": [
+        "--dart-define=ENABLE_BUYER_BACKEND=true",
+        "--dart-define=API_BASE_URL=http://10.0.2.2:8000/api"
+      ],
+      "preLaunchTask": "Start Lumear API"
+    },
+    {
+      "name": "Lumear · MySQL (phone with adb reverse)",
+      "preLaunchTask": "Connect Lumear phone API",
+      "request": "launch",
+      "type": "dart",
+      "program": "lib/main.dart",
+      "toolArgs": [
+        "--dart-define=ENABLE_BUYER_BACKEND=true",
+        "--dart-define=API_BASE_URL=http://127.0.0.1:8000/api"
+      ]
+    },
+    {
+      "name": "Lumear · Local sample preview",
+      "request": "launch",
+      "type": "dart",
+      "program": "lib/main.dart",
+      "toolArgs": [
+        "--dart-define=ENABLE_BUYER_BACKEND=false"
+      ]
+    }
+  ]
+}
