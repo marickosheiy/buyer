@@ -1,3 +1,5 @@
+import 'product_media.dart';
+
 import 'package:flutter/foundation.dart';
 
 import '../services/api_service.dart';
@@ -34,12 +36,14 @@ class SellerProduct {
     this.description = '',
     this.active = true,
     this.editable = true,
+    this.media = const [],
   });
   final String id;
   final String name, category, description;
   final int price, stock;
   final bool active;
   final bool editable;
+  final List<ProductMedia> media;
 }
 
 class SellerOrder {
@@ -211,6 +215,7 @@ class SellerCommerce extends ChangeNotifier {
           description: p['description'],
           active: p['active'],
           editable: (p['variants'] as List).length == 1,
+          media: ProductMedia.fromProduct(p),
         ),
       );
     }
@@ -303,6 +308,7 @@ class SellerCommerce extends ChangeNotifier {
         'category': product.category,
         'description': product.description,
         'active': product.active,
+        'media': product.media.map((m) => m.toJson()).toList(),
       };
       if (_products.any((p) => p.id == product.id)) {
         await ApiService.patch('/seller/products/${product.id}', body: body);
@@ -361,6 +367,7 @@ class SellerCommerce extends ChangeNotifier {
         category: p.category,
         description: p.description,
         active: p.active,
+        media: p.media,
       );
     }
     notifyListeners();

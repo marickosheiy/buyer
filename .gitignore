@@ -46,10 +46,6 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
-backend/*.sqlite3*
-backend/__pycache__/
-backend/.env.mysql
-backend/.env.cloud
-backend/aiven-ca.pem
-backend/.venv/
-backend/private_uploads/
+
+# Preserved local seller documents (not part of the Flutter app)
+/private_uploads/

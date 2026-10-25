@@ -87,23 +87,22 @@ class AppearanceButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: LumearAppearance.instance,
-    builder: (context, _) => PopupMenuButton<ThemeMode>(
-      tooltip: 'Appearance',
-      icon: Icon(
-        LumearAppearance.instance.isDark
-            ? Icons.dark_mode_outlined
-            : Icons.light_mode_outlined,
-      ),
-      initialValue: LumearAppearance.instance.mode,
-      onSelected: LumearAppearance.instance.setMode,
-      itemBuilder: (_) => const [
-        PopupMenuItem(
-          value: ThemeMode.system,
-          child: Text('Use device setting'),
+    builder: (context, _) => Tooltip(
+      message: 'Dark mode',
+      child: Switch.adaptive(
+        value: LumearAppearance.instance.isDark,
+        thumbIcon: WidgetStateProperty.resolveWith(
+          (states) => Icon(
+            states.contains(WidgetState.selected)
+                ? Icons.dark_mode
+                : Icons.light_mode,
+            size: 16,
+          ),
         ),
-        PopupMenuItem(value: ThemeMode.light, child: Text('Light mode')),
-        PopupMenuItem(value: ThemeMode.dark, child: Text('Dark mode')),
-      ],
+        onChanged: (enabled) => LumearAppearance.instance.setMode(
+          enabled ? ThemeMode.dark : ThemeMode.light,
+        ),
+      ),
     ),
   );
 }

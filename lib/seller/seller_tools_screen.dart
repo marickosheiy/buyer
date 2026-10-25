@@ -1,3 +1,5 @@
+import 'product_media.dart';
+
 import 'package:flutter/material.dart';
 
 import '../design/components.dart';
@@ -172,6 +174,10 @@ class _SellerToolsScreenState extends State<SellerToolsScreen> {
                             ],
                           ),
                           const SizedBox(height: 12),
+                          if (p.media.isNotEmpty) ...[
+                            ProductMediaGallery(media: p.media),
+                            const SizedBox(height: 12),
+                          ],
                           Text('${sellerMoney(p.price)} · ${p.category}'),
                           const SizedBox(height: 8),
                           Text(
@@ -209,6 +215,7 @@ class _SellerToolsScreenState extends State<SellerToolsScreen> {
                                         category: p.category,
                                         description: p.description,
                                         active: active,
+                                        media: p.media,
                                       ),
                                     ),
                                   ),
@@ -226,6 +233,7 @@ class _SellerToolsScreenState extends State<SellerToolsScreen> {
               child: DataTable(
                 columns: const [
                   DataColumn(label: Text('PRODUCT')),
+                  DataColumn(label: Text('MEDIA')),
                   DataColumn(label: Text('CATEGORY')),
                   DataColumn(label: Text('PRICE')),
                   DataColumn(label: Text('STOCK')),
@@ -237,6 +245,35 @@ class _SellerToolsScreenState extends State<SellerToolsScreen> {
                     DataRow(
                       cells: [
                         DataCell(SizedBox(width: 150, child: Text(p.name))),
+                        DataCell(
+                          TextButton.icon(
+                            onPressed: p.media.isEmpty
+                                ? null
+                                : () => showDialog<void>(
+                                    context: context,
+                                    builder: (_) => AlertDialog(
+                                      title: Text(p.name),
+                                      content: SingleChildScrollView(
+                                        child: SizedBox(
+                                          width: 420,
+                                          child: ProductMediaGallery(
+                                            media: p.media,
+                                          ),
+                                        ),
+                                      ),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () =>
+                                              Navigator.pop(context),
+                                          child: const Text('Close'),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                            icon: const Icon(Icons.perm_media_outlined),
+                            label: Text('${p.media.length} attachments'),
+                          ),
+                        ),
                         DataCell(Text(p.category)),
                         DataCell(Text(sellerMoney(p.price))),
                         DataCell(Text('${p.stock}')),
@@ -793,6 +830,31 @@ class _ProductEditor extends StatefulWidget {
 
 class _ProductEditorState extends State<_ProductEditor> {
   final form = GlobalKey<FormState>();
+  late final media = [...?widget.product?.media];
+  bool pickingMedia = false;
+  String? mediaError;
+
+  Future<void> addMedia(bool video) async {
+    setState(() {
+      pickingMedia = true;
+      mediaError = null;
+    });
+    try {
+      final selected = await ProductMedia.pick(video: video, existing: media);
+      if (mounted && selected != null) setState(() => media.add(selected));
+    } catch (error) {
+      if (mounted) {
+        setState(
+          () => mediaError = error is FormatException
+              ? error.message
+              : 'Unable to select media. Please try again.',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => pickingMedia = false);
+    }
+  }
+
   late final categories = widget.categories
       .map((category) => category.trim())
       .where((category) => category.isNotEmpty)
@@ -834,6 +896,54 @@ class _ProductEditorState extends State<_ProductEditor> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Product photos and video',
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Up to 5 photos (5 MB each) and 1 video (20 MB). JPG, PNG, WEBP or MP4.',
+                ),
+                const SizedBox(height: 8),
+                ProductMediaGallery(
+                  media: media,
+                  onRemove: pickingMedia
+                      ? null
+                      : (index) => setState(() => media.removeAt(index)),
+                ),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    OutlinedButton.icon(
+                      onPressed:
+                          pickingMedia ||
+                              media.where((m) => !m.isVideo).length >= 5
+                          ? null
+                          : () => addMedia(false),
+                      icon: const Icon(Icons.add_photo_alternate_outlined),
+                      label: const Text('Add photo'),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: pickingMedia || media.any((m) => m.isVideo)
+                          ? null
+                          : () => addMedia(true),
+                      icon: const Icon(Icons.video_library_outlined),
+                      label: const Text('Add video'),
+                    ),
+                  ],
+                ),
+                if (pickingMedia) const LinearProgressIndicator(),
+                if (mediaError != null)
+                  Text(
+                    mediaError!,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                  ),
+                const SizedBox(height: 16),
                 for (final entry in {
                   'name': 'Product name',
                   'price': 'Price (₱)',
@@ -908,24 +1018,27 @@ class _ProductEditorState extends State<_ProductEditor> {
           child: const Text('Cancel'),
         ),
         FilledButton(
-          onPressed: () {
-            if (!form.currentState!.validate()) return;
-            Navigator.pop(
-              context,
-              SellerProduct(
-                id:
-                    widget.product?.id ??
-                    'SP-${DateTime.now().microsecondsSinceEpoch}',
-                name: fields['name']!.text.trim(),
-                price: (double.parse(fields['price']!.text.trim()) * 100)
-                    .round(),
-                stock: int.parse(fields['stock']!.text.trim()),
-                category: category!,
-                description: fields['description']!.text.trim(),
-                active: widget.product?.active ?? true,
-              ),
-            );
-          },
+          onPressed: pickingMedia
+              ? null
+              : () {
+                  if (!form.currentState!.validate()) return;
+                  Navigator.pop(
+                    context,
+                    SellerProduct(
+                      id:
+                          widget.product?.id ??
+                          'SP-${DateTime.now().microsecondsSinceEpoch}',
+                      name: fields['name']!.text.trim(),
+                      price: (double.parse(fields['price']!.text.trim()) * 100)
+                          .round(),
+                      stock: int.parse(fields['stock']!.text.trim()),
+                      category: category!,
+                      description: fields['description']!.text.trim(),
+                      active: widget.product?.active ?? true,
+                      media: List.unmodifiable(media),
+                    ),
+                  );
+                },
           child: const Text('Save product'),
         ),
       ],

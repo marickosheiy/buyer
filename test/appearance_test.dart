@@ -1,3 +1,5 @@
+import 'package:flutter_application_1/services/api_service.dart';
+
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
@@ -36,6 +38,11 @@ Future<void> preview(WidgetTester tester, String name) async {
 }
 
 void main() {
+  setUp(() => ApiService.baseUrl = 'https://integration.example.invalid/api');
+  tearDown(() {
+    ApiService.baseUrl = '';
+    ApiService.setToken(null);
+  });
   TestWidgetsFlutterBinding.ensureInitialized();
   setUpAll(() async {
     if (const bool.fromEnvironment('WRITE_UI_PREVIEWS')) {
@@ -83,9 +90,7 @@ void main() {
     await tester.pumpWidget(themed(const DashboardScreen()));
     await tester.pumpAndSettle();
     await preview(tester, 'buyer-light-phone');
-    await tester.tap(find.byTooltip('Appearance').first);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Dark mode'));
+    await tester.tap(find.byTooltip('Dark mode').first);
     await tester.pumpAndSettle();
     expect(saved.last, 'dark');
     expect(LumearColors.ink, LumearColors.beige);
@@ -94,6 +99,10 @@ void main() {
       Brightness.dark,
     );
     await preview(tester, 'buyer-dark-phone');
+    await tester.tap(find.byTooltip('Dark mode').first);
+    await tester.pumpAndSettle();
+    expect(saved.last, 'light');
+    expect(LumearAppearance.instance.isDark, isFalse);
     await tester.tap(find.text('Me').last);
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);

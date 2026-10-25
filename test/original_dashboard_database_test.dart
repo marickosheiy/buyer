@@ -1,3 +1,5 @@
+import 'package:flutter_application_1/services/api_service.dart';
+
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -13,6 +15,11 @@ import 'package:flutter_application_1/product_model.dart';
 import 'package:flutter_application_1/services/wishlist_manager.dart';
 
 void main() {
+  setUp(() => ApiService.baseUrl = 'https://integration.example.invalid/api');
+  tearDown(() {
+    ApiService.baseUrl = '';
+    ApiService.setToken(null);
+  });
   testWidgets(
     'Original dashboard keeps its navigation and saves cart/wishlist through the API',
     (tester) async {
@@ -72,6 +79,9 @@ void main() {
           BuyerData.instance.reset();
         },
         () => MockClient((request) async {
+          if (request.url.path == '/api/chat/threads') {
+            return http.Response('{"threads":[]}', 200);
+          }
           if (request.method == 'POST' && request.url.path == '/api/cart') {
             final body = jsonDecode(request.body);
             expect(body['product_id'], '7');

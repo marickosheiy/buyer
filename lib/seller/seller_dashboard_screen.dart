@@ -10,6 +10,7 @@ import 'seller_profile_screen.dart';
 import 'seller_shop.dart';
 import 'seller_commerce.dart';
 import 'seller_tools_screen.dart';
+import '../screen/chat_screen.dart';
 
 class SellerDashboardScreen extends StatefulWidget {
   const SellerDashboardScreen({super.key, this.connected = false});
@@ -126,6 +127,19 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
                       ),
                     ),
                     const AppearanceButton(),
+                    IconButton(
+                      tooltip: 'Messages',
+                      icon: const Icon(Icons.chat_bubble_outline),
+                      onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => ChatInboxScreen(
+                            connected: widget.connected,
+                            seller: true,
+                          ),
+                        ),
+                      ),
+                    ),
                     if (widget.connected)
                       IconButton(
                         tooltip: 'Refresh shop',

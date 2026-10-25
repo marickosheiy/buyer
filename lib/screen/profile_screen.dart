@@ -258,8 +258,8 @@ class ProfileScreen extends StatelessWidget {
               const SizedBox(height: 12),
               ListTile(
                 leading: const Icon(Icons.brightness_6_outlined),
-                title: const Text('Appearance'),
-                subtitle: const Text('Light, dark or device setting'),
+                title: const Text('Dark mode'),
+                subtitle: const Text('On for dark, off for light'),
                 trailing: const AppearanceButton(),
               ),
               _option(

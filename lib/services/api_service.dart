@@ -15,10 +15,9 @@ class ApiException implements Exception {
 
 class ApiService {
   ApiService._();
-  static const String baseUrl = String.fromEnvironment(
-    'API_BASE_URL',
-    defaultValue: 'http://127.0.0.1:8000/api',
-  );
+  // The shared integration backend supplies this URL; no server is bundled.
+  static String baseUrl = const String.fromEnvironment('API_BASE_URL');
+  static const _requestTimeout = Duration(seconds: 20);
   // Memory only: no unencrypted token persistence. Demo login never issues a token.
   static String? _token;
   static void setToken(String? token) => _token = token;
@@ -42,6 +41,14 @@ class ApiService {
         endpoint.contains('..')) {
       throw const ApiException('Invalid API endpoint.');
     }
+    final apiUri = Uri.tryParse(baseUrl);
+    if (apiUri == null ||
+        !apiUri.hasAuthority ||
+        !const ['http', 'https'].contains(apiUri.scheme)) {
+      throw const ApiException(
+        'The shared service is not configured yet. Please use a demo account.',
+      );
+    }
     final client = http.Client();
     try {
       final request = http.Request(
@@ -57,7 +64,7 @@ class ApiService {
       final response = await client
           .send(request)
           .then(http.Response.fromStream)
-          .timeout(const Duration(seconds: 20));
+          .timeout(_requestTimeout);
       dynamic payload;
       try {
         payload = response.body.isEmpty ? null : jsonDecode(response.body);

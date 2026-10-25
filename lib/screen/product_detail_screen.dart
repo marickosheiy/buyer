@@ -13,6 +13,8 @@ import '../design/components.dart';
 import '../services/wishlist_manager.dart';
 import '../services/ui_action.dart';
 import '../search_screen.dart';
+import '../services/chat_service.dart';
+import 'chat_screen.dart';
 
 class ProductDetailScreen extends StatefulWidget {
   final LumearProduct product;
@@ -651,6 +653,24 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
             child: Text(
               product.description,
               style: TextStyle(color: ink, height: 1.6, fontSize: 13),
+            ),
+          ),
+          _section(
+            title: 'Questions about this product?',
+            child: OutlinedButton.icon(
+              icon: const Icon(Icons.chat_bubble_outline),
+              label: const Text('Chat with seller'),
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => ChatScreen(
+                    service: ChatService(
+                      connected: ProductCatalog.instance.connected,
+                    ),
+                    product: product,
+                  ),
+                ),
+              ),
             ),
           ),
           _section(

@@ -1,3 +1,5 @@
+import 'package:flutter_application_1/services/api_service.dart';
+
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -11,20 +13,31 @@ import 'package:flutter_application_1/screen/dashboard_screen.dart';
 import 'package:flutter_application_1/seller/seller_dashboard_screen.dart';
 
 void main() {
+  setUp(() => ApiService.baseUrl = 'https://integration.example.invalid/api');
+  tearDown(() {
+    ApiService.baseUrl = '';
+    ApiService.setToken(null);
+  });
   for (final seller in [false, true]) {
     testWidgets(
       '${seller ? 'Seller' : 'Buyer'} demo opens without an API request',
       (tester) async {
+        ApiService.baseUrl = '';
         int apiRequests = 0;
         await http.runWithClient(
           () async {
             await tester.pumpWidget(
-              MaterialApp(
-                theme: lumearTheme(),
-                home: const LoginPage(useBackend: false),
-              ),
+              MaterialApp(theme: lumearTheme(), home: const LoginPage()),
             );
             await tester.pumpAndSettle();
+            expect(
+              tester
+                  .widget<TextButton>(
+                    find.widgetWithText(TextButton, 'Create an account'),
+                  )
+                  .onPressed,
+              isNull,
+            );
             expect(find.textContaining('connected backend'), findsNothing);
             await tester.tap(
               find.text(seller ? 'Seller · local preview' : 'Buyer'),
@@ -125,35 +138,34 @@ void main() {
       );
     },
   );
-  testWidgets(
-    'Explicit preview fills credentials and has no social sign-in',
-    (tester) async {
-      tester.view.physicalSize = const Size(360, 800);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
-      await tester.pumpWidget(
-        MaterialApp(
-          theme: lumearTheme(),
-          home: const LoginPage(useBackend: false),
-        ),
-      );
-      await tester.pumpAndSettle();
-      expect(find.text('Try a demo account'), findsOneWidget);
-      final demo = find.text('Buyer', skipOffstage: false);
-      await tester.ensureVisible(demo);
-      await tester.tap(demo);
-      await tester.pumpAndSettle();
-      final fields = tester
-          .widgetList<TextField>(find.byType(TextField))
-          .toList();
-      expect(fields[0].controller!.text, 'lumear@gmail.com');
-      expect(fields[1].controller!.text, 'Lumear123');
-      expect(find.text('Continue with Facebook'), findsNothing);
-      expect(find.text('Continue with Google'), findsNothing);
-      expect(tester.takeException(), isNull);
-    },
-  );
+  testWidgets('Explicit preview fills credentials and has no social sign-in', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: lumearTheme(),
+        home: const LoginPage(useBackend: false),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Try a demo account'), findsOneWidget);
+    final demo = find.text('Buyer', skipOffstage: false);
+    await tester.ensureVisible(demo);
+    await tester.tap(demo);
+    await tester.pumpAndSettle();
+    final fields = tester
+        .widgetList<TextField>(find.byType(TextField))
+        .toList();
+    expect(fields[0].controller!.text, 'lumear@gmail.com');
+    expect(fields[1].controller!.text, 'Lumear123');
+    expect(find.text('Continue with Facebook'), findsNothing);
+    expect(find.text('Continue with Google'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets(
     'Buyer workspace loads persisted data and shows all order tabs on mobile',

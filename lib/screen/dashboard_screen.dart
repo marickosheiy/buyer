@@ -12,7 +12,7 @@ import '../product_model.dart';
 import '../search_screen.dart';
 import '../services/wishlist_manager.dart';
 import '../widgets/banner_carousel.dart';
-import 'notifications_screen.dart';
+import 'chat_screen.dart';
 import 'orders_screen.dart';
 import 'profile_screen.dart';
 import 'voucher_screen.dart';
@@ -27,6 +27,7 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   int selectedIndex = 0;
+  bool chatOpened = false;
   @override
   void initState() {
     super.initState();
@@ -66,12 +67,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
               Expanded(
                 child: IndexedStack(
                   index: selectedIndex,
-                  children: const [
-                    HomeScreen(),
-                    SearchScreen(embedded: true),
-                    NotificationsScreen(),
-                    OrdersScreen(),
-                    ProfileScreen(),
+                  children: [
+                    const HomeScreen(),
+                    const SearchScreen(embedded: true),
+                    if (chatOpened)
+                      ChatInboxScreen(
+                        connected: widget.connected,
+                        active: selectedIndex == 2,
+                      )
+                    else
+                      const SizedBox.shrink(),
+                    const OrdersScreen(),
+                    const ProfileScreen(),
                   ],
                 ),
               ),
@@ -80,7 +87,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
         bottomNavigationBar: LumearDock(
           selectedIndex: selectedIndex,
-          onSelected: (i) => setState(() => selectedIndex = i),
+          onSelected: (i) => setState(() {
+            selectedIndex = i;
+            if (i == 2) chatOpened = true;
+          }),
           destinations: const [
             NavigationDestination(
               icon: Icon(Icons.home_outlined),
@@ -93,8 +103,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
               label: 'Browse',
             ),
             NavigationDestination(
-              icon: Icon(Icons.notifications_none),
-              selectedIcon: Icon(Icons.notifications),
+              icon: Icon(Icons.chat_bubble_outline),
+              selectedIcon: Icon(Icons.chat_bubble),
               label: 'Inbox',
             ),
             NavigationDestination(

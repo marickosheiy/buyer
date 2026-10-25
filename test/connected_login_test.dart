@@ -1,3 +1,5 @@
+import 'package:flutter_application_1/services/api_service.dart';
+
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -10,14 +12,59 @@ import 'package:flutter_application_1/services/buyer_data.dart';
 import 'package:flutter_application_1/screen/dashboard_screen.dart';
 
 void main() {
-  testWidgets('Normal login uses the backend and opens persisted buyer data', (
+  setUp(() => ApiService.baseUrl = 'https://integration.example.invalid/api');
+  tearDown(() {
+    ApiService.baseUrl = '';
+    ApiService.setToken(null);
+  });
+  testWidgets(
+    'Connected login without a shared URL stays on the login screen',
+    (tester) async {
+      ApiService.baseUrl = '';
+      var requests = 0;
+      await http.runWithClient(
+        () async {
+          await tester.pumpWidget(
+            MaterialApp(
+              theme: lumearTheme(),
+              home: const LoginPage(useBackend: true),
+            ),
+          );
+          await tester.enterText(
+            find.byType(TextField).at(0),
+            'buyer@example.invalid',
+          );
+          await tester.enterText(find.byType(TextField).at(1), 'Password123');
+          await tester.ensureVisible(
+            find.widgetWithText(FilledButton, 'Sign in'),
+          );
+          await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
+          await tester.pumpAndSettle();
+          expect(
+            find.textContaining('shared service is not configured'),
+            findsOneWidget,
+          );
+          expect(find.byType(LoginPage), findsOneWidget);
+          expect(requests, 0);
+        },
+        () => MockClient((_) async {
+          requests++;
+          return http.Response('{}', 500);
+        }),
+      );
+    },
+  );
+  testWidgets('Explicit connected login opens persisted buyer data', (
     tester,
   ) async {
     bool loggedIn = false;
     await http.runWithClient(
       () async {
         await tester.pumpWidget(
-          MaterialApp(theme: lumearTheme(), home: const LoginPage()),
+          MaterialApp(
+            theme: lumearTheme(),
+            home: const LoginPage(useBackend: true),
+          ),
         );
         await tester.pumpAndSettle();
         expect(find.text('Try a demo account'), findsNothing);
@@ -80,7 +127,10 @@ void main() {
   ) async {
     await http.runWithClient(() async {
       await tester.pumpWidget(
-        MaterialApp(theme: lumearTheme(), home: const LoginPage()),
+        MaterialApp(
+          theme: lumearTheme(),
+          home: const LoginPage(useBackend: true),
+        ),
       );
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField).at(0), 'lumear@gmail.com');
@@ -88,10 +138,7 @@ void main() {
       await tester.ensureVisible(find.widgetWithText(FilledButton, 'Sign in'));
       await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
       await tester.pumpAndSettle();
-      expect(
-        find.textContaining('Cannot connect to Lumear'),
-        findsOneWidget,
-      );
+      expect(find.textContaining('Cannot connect to Lumear'), findsOneWidget);
       expect(find.byType(LoginPage), findsOneWidget);
       expect(find.byType(DashboardScreen), findsNothing);
     }, () => MockClient((_) async => throw http.ClientException('offline')));

@@ -6,6 +6,7 @@ import 'design/lumear_theme.dart';
 
 import 'seller/seller_dashboard_screen.dart';
 import 'services/api_service.dart';
+import 'services/google_login.dart';
 import 'widgets/email_verification_form.dart';
 import 'services/buyer_data.dart';
 import 'screen/dashboard_screen.dart';
@@ -15,8 +16,9 @@ import 'address_manager.dart';
 import 'services/wishlist_manager.dart';
 
 class LoginPage extends StatefulWidget {
-  const LoginPage({super.key, this.useBackend});
+  const LoginPage({super.key, this.useBackend, this.googleIdTokenProvider});
   final bool? useBackend;
+  final Future<String?> Function()? googleIdTokenProvider;
 
   @override
   State<LoginPage> createState() => _LoginPageState();
@@ -25,7 +27,7 @@ class LoginPage extends StatefulWidget {
 class _LoginPageState extends State<LoginPage> {
   bool get backendEnabled =>
       widget.useBackend ??
-      const bool.fromEnvironment('ENABLE_BUYER_BACKEND', defaultValue: true);
+      const bool.fromEnvironment('ENABLE_BUYER_BACKEND', defaultValue: false);
 
   final TextEditingController emailController = TextEditingController();
 
@@ -99,23 +101,76 @@ class _LoginPageState extends State<LoginPage> {
         isSeller = result['role'] == 'seller';
       }
       if (!mounted) return;
-      BuyerData.instance.reset();
-      CartManager.instance.clearCart();
-      OrderManager.instance.clearOrders();
-      AddressManager.instance.addresses.value = [];
-      WishlistManager.instance.clear();
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (_) => isSeller
-              ? SellerDashboardScreen(connected: backendEnabled)
-              : backendEnabled
-              ? const DashboardScreen(connected: true)
-              : const DashboardScreen(),
-        ),
-      );
+      openWorkspace(isSeller);
     } catch (error) {
       if (mounted) setState(() => loginError = error.toString());
+    } finally {
+      if (mounted) setState(() => isLoading = false);
+    }
+  }
+
+  void openWorkspace(bool isSeller) {
+    BuyerData.instance.reset();
+    CartManager.instance.clearCart();
+    OrderManager.instance.clearOrders();
+    AddressManager.instance.addresses.value = [];
+    WishlistManager.instance.clear();
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (_) => isSeller
+            ? SellerDashboardScreen(connected: backendEnabled)
+            : backendEnabled
+            ? const DashboardScreen(connected: true)
+            : const DashboardScreen(),
+      ),
+    );
+  }
+
+  Future<void> loginWithGoogle() async {
+    if (isLoading) return;
+    final apiUrl = Uri.tryParse(ApiService.baseUrl);
+    if (!backendEnabled ||
+        apiUrl == null ||
+        !apiUrl.hasAuthority ||
+        !['http', 'https'].contains(apiUrl.scheme)) {
+      setState(
+        () => loginError = 'Google sign-in will be available when the shared service is connected. You can use a demo account for now.',
+      );
+      return;
+    }
+    setState(() {
+      isLoading = true;
+      loginError = null;
+    });
+    ApiService.setToken(null);
+    try {
+      final token =
+          await (widget.googleIdTokenProvider ?? GoogleLogin.idToken)();
+      if (!mounted || token == null) return;
+      final result = await ApiService.post(
+        '/auth/google',
+        body: {'id_token': token},
+      );
+      if (!mounted) return;
+      if (result is! Map ||
+          result['token'] is! String ||
+          (result['token'] as String).isEmpty ||
+          !['buyer', 'seller'].contains(result['role'])) {
+        throw const ApiException(
+          'Google sign-in could not create a Lumear session. Please try again.',
+        );
+      }
+      ApiService.setToken(result['token'] as String);
+      openWorkspace(result['role'] == 'seller');
+    } catch (error) {
+      if (mounted) {
+        setState(
+          () => loginError = error is ApiException
+              ? error.message
+              : 'Unable to sign in with Google. Please try again.',
+        );
+      }
     } finally {
       if (mounted) setState(() => isLoading = false);
     }
@@ -398,7 +453,29 @@ class _LoginPageState extends State<LoginPage> {
                                   ),
                                 ),
                               ),
+                              const SizedBox(height: 12),
+                              SizedBox(
+                                width: double.infinity,
+                                child: OutlinedButton.icon(
+                                  onPressed: isLoading ? null : loginWithGoogle,
+                                  icon: Image.asset(
+                                    'assets/images/google.png',
+                                    width: 20,
+                                    height: 20,
+                                  ),
+                                  label: const Text('Continue with Google'),
+                                ),
+                              ),
                               const SizedBox(height: 16),
+                              if (!backendEnabled)
+                                const Padding(
+                                  padding: EdgeInsets.only(bottom: 8),
+                                  child: Text(
+                                    'Demo mode. Changes last for this session. Registration and email verification will be available when the shared service is connected.',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(fontSize: 12),
+                                  ),
+                                ),
                               Wrap(
                                 alignment: WrapAlignment.center,
                                 crossAxisAlignment: WrapCrossAlignment.center,
@@ -411,12 +488,15 @@ class _LoginPageState extends State<LoginPage> {
                                     ),
                                   ),
                                   TextButton(
-                                    onPressed: () => Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (_) => const RegisterPage(),
-                                      ),
-                                    ),
+                                    onPressed: backendEnabled && !isLoading
+                                        ? () => Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (_) =>
+                                                  const RegisterPage(),
+                                            ),
+                                          )
+                                        : null,
                                     child: const Text(
                                       'Create an account',
                                       style: TextStyle(fontSize: 12),

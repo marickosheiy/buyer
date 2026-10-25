@@ -1,3 +1,5 @@
+import 'package:flutter_application_1/services/api_service.dart';
+
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -8,6 +10,11 @@ import 'package:flutter_application_1/design/lumear_theme.dart';
 import 'package:flutter_application_1/seller/seller_dashboard_screen.dart';
 
 void main() {
+  setUp(() => ApiService.baseUrl = 'https://integration.example.invalid/api');
+  tearDown(() {
+    ApiService.baseUrl = '';
+    ApiService.setToken(null);
+  });
   testWidgets(
     'Connected seller uses database sales and wallet balances without sample records',
     (tester) async {
