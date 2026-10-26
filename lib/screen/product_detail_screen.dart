@@ -446,6 +446,11 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                     letterSpacing: 1.1,
                   ),
                 ),
+                if (product.subcategory.isNotEmpty)
+                  Text(
+                    product.subcategory,
+                    style: TextStyle(color: muted, fontSize: 12),
+                  ),
                 const SizedBox(height: 7),
                 Text(
                   product.name,

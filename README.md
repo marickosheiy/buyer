@@ -1,8 +1,13 @@
 # Lumear buyer and seller app
 
 Flutter buyer and seller interfaces for integration with the rider app's shared
-backend. This project does not include a server, database, SQL schemas, database
-credentials, or deployment setup.
+backend. The standalone database SQL and partner handoff notes are in
+[`database/`](database/README.md). They are not connected to the app. No server,
+database credentials, or deployment setup is bundled.
+
+Buyer browsing and seller product forms share **8 categories and 48 subcategories**.
+Choose a main category to filter its subcategories; sellers choose both when
+adding or editing a product. The SQL handoff seeds the same hierarchy.
 
 Run `flutter pub get`, then `flutter run`, or select **Lumear · Buyer and seller
 preview** in VS Code. No local server, MySQL, Node, or USB API forwarding is needed.

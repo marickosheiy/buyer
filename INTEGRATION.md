@@ -54,6 +54,24 @@ The shared backend must implement validation, upload storage, removal handling,
 and buyer-visible media responses before enabling this feature across accounts.
 The current picker allows five photos up to 5 MB each and one MP4 up to 20 MB.
 
+## Product categories and subcategories
+
+`lib/product_categories.dart` is the shared buyer/seller hierarchy: 8 main
+categories and 48 subcategories, using the supplied names verbatim. Browse supports
+category/subcategory filtering. Seller Add/Edit Product requires a subcategory
+belonging to the selected category and clears it when the parent changes.
+
+Product responses and seller create/update requests now include `subcategory`
+alongside `category`, both display-name strings. The backend must resolve these
+to category/subcategory IDs and validate their parent/child relationship. Older
+responses without `subcategory` remain readable; they appear under the main
+category and All subcategories until mapped by the integration partner.
+The standalone `database/lumear_ecommerce.sql` now includes Subcategories,
+Products.subcategory_id, a composite foreign key to enforce the parent category,
+and all 56 category/subcategory seed records. `database/README.md` contains the
+handoff details and category list. Neither the SQL nor its ZIP is connected to the
+app, imported, or run automatically. Seller commission remains 10% as documented.
+
 ## Registration address
 
 Contact entry uses the local Philippine mobile format: 11 digits starting with

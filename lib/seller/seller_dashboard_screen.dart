@@ -12,6 +12,7 @@ import 'seller_commerce.dart';
 import 'seller_tools_screen.dart';
 import '../screen/chat_screen.dart';
 import '../services/demo_accounts.dart';
+import '../product_categories.dart';
 
 class SellerDashboardScreen extends StatefulWidget {
   const SellerDashboardScreen({super.key, this.connected = false});
@@ -741,25 +742,27 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
     ],
   );
   Widget _categories() {
-    final names = commerce.products.map((p) => p.category).toSet().toList()
-      ..sort();
+    final names = ProductCategories.names;
     return ListView(
       padding: const EdgeInsets.all(20),
       children: [
         const PageHeading(
           'Store categories',
           eyebrow: 'CATALOGUE',
-          subtitle: 'Categories used by your shop listings.',
+          subtitle: 'Choose from 8 categories and their subcategories.',
         ),
         for (final name in names)
           Card(
-            child: ListTile(
+            child: ExpansionTile(
               leading: const Icon(Icons.category_outlined),
               title: Text(name),
-              trailing: Text(
-                '${commerce.products.where((p) => p.category == name).length} products',
+              subtitle: Text(
+                '${commerce.products.where((p) => ProductCategories.canonical(p.category) == name).length} products',
               ),
-              onTap: () => select(2),
+              children: [
+                for (final child in ProductCategories.children(name))
+                  ListTile(title: Text(child), onTap: () => select(2)),
+              ],
             ),
           ),
         if (names.isEmpty)

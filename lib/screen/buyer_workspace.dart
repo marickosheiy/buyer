@@ -10,6 +10,7 @@ import '../design/components.dart';
 import '../login_page.dart';
 import '../services/api_service.dart';
 import '../services/mobile_number.dart';
+import '../product_categories.dart';
 
 /// Buyer workspace backed by the authenticated API, rather than sample records.
 class BuyerWorkspace extends StatefulWidget {
@@ -237,7 +238,9 @@ class _BuyerWorkspaceState extends State<BuyerWorkspace> {
               p['name'].toString().toLowerCase().contains(
                 search.toLowerCase(),
               ) &&
-              (category.isEmpty || p['category'] == category),
+              (category.isEmpty ||
+                  ProductCategories.canonical(p['category'].toString()) ==
+                      category),
         )
         .toList();
     visible.sort(
@@ -263,16 +266,19 @@ class _BuyerWorkspaceState extends State<BuyerWorkspace> {
         onChanged: (v) => setState(() => search = v),
       ),
       const SizedBox(height: 12),
-      Wrap(
-        spacing: 8,
-        children: [
-          for (final c in ['', 'Bags', 'Home & Living', 'Electronics'])
-            ChoiceChip(
-              label: Text(c.isEmpty ? 'All' : c),
-              selected: category == c,
-              onSelected: (_) => setState(() => category = c),
-            ),
-        ],
+      SizedBox(
+        height: 48,
+        child: ListView(
+          scrollDirection: Axis.horizontal,
+          children: [
+            for (final c in ['', ...ProductCategories.names])
+              ChoiceChip(
+                label: Text(c.isEmpty ? 'All' : c),
+                selected: category == c,
+                onSelected: (_) => setState(() => category = c),
+              ),
+          ],
+        ),
       ),
       DropdownButton<String>(
         value: sort,

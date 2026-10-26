@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'design/components.dart';
 import 'design/lumear_theme.dart';
 import 'product_model.dart';
+import 'product_categories.dart';
 
 class SearchScreen extends StatefulWidget {
   const SearchScreen({
@@ -20,21 +21,11 @@ class SearchScreen extends StatefulWidget {
 
 class _SearchScreenState extends State<SearchScreen> {
   final controller = TextEditingController();
-  late String category = widget.initialCategory;
+  late String category = ProductCategories.canonical(widget.initialCategory);
+  String subcategory = 'All';
   String sortBy = 'Recommended';
   bool inStockOnly = false;
-  List<String> get categories => ProductCatalog.instance.connected
-      ? ['All', ...lumearProducts.map((p) => p.category).toSet()]
-      : const [
-          'All',
-          'Fashion',
-          'Electronics',
-          'Baby',
-          'Jewelry',
-          'Gaming',
-          'Home',
-          'Beauty',
-        ];
+  List<String> get categories => ['All', ...ProductCategories.names];
   static const sorts = [
     'Recommended',
     'Price: Low to High',
@@ -49,10 +40,12 @@ class _SearchScreenState extends State<SearchScreen> {
         .where(
           (p) =>
               (query.isEmpty ||
-                  '${p.name} ${p.category} ${p.shopName}'
+                  '${p.name} ${p.category} ${p.subcategory} ${p.shopName}'
                       .toLowerCase()
                       .contains(query)) &&
-              (category == 'All' || p.category == category) &&
+              (category == 'All' ||
+                  ProductCategories.canonical(p.category) == category) &&
+              (subcategory == 'All' || p.subcategory == subcategory) &&
               (!inStockOnly || p.stock > 0) &&
               (widget.shopName == null || p.shopName == widget.shopName),
         )
@@ -194,10 +187,36 @@ class _SearchScreenState extends State<SearchScreen> {
                       ? LumearColors.cream
                       : LumearColors.ink,
                 ),
-                onSelected: (_) => setState(() => category = categories[i]),
+                onSelected: (_) => setState(() {
+                  category = categories[i];
+                  subcategory = 'All';
+                }),
               ),
             ),
           ),
+          if (ProductCategories.children(category).isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(22, 10, 22, 0),
+              child: DropdownButtonFormField<String>(
+                key: ValueKey(category),
+                initialValue: subcategory,
+                isExpanded: true,
+                decoration: const InputDecoration(labelText: 'Subcategory'),
+                items: [
+                  const DropdownMenuItem(
+                    value: 'All',
+                    child: Text('All subcategories'),
+                  ),
+                  for (final child in ProductCategories.children(category))
+                    DropdownMenuItem(
+                      value: child,
+                      child: Text(child, overflow: TextOverflow.ellipsis),
+                    ),
+                ],
+                onChanged: (value) =>
+                    setState(() => subcategory = value ?? 'All'),
+              ),
+            ),
           Padding(
             padding: const EdgeInsets.fromLTRB(22, 10, 14, 5),
             child: Row(
@@ -218,18 +237,21 @@ class _SearchScreenState extends State<SearchScreen> {
           ),
           Expanded(
             child: products.isEmpty
-                ? EmptyState(
-                    title: 'No finds just yet',
-                    icon: Icons.search_off,
-                    message:
-                        'Try a different word or explore another category.',
-                    action: OutlinedButton(
-                      onPressed: () => setState(() {
-                        controller.clear();
-                        category = 'All';
-                        inStockOnly = false;
-                      }),
-                      child: const Text('Reset filters'),
+                ? SingleChildScrollView(
+                    child: EmptyState(
+                      title: 'No finds just yet',
+                      icon: Icons.search_off,
+                      message:
+                          'Try a different word or explore another category.',
+                      action: OutlinedButton(
+                        onPressed: () => setState(() {
+                          controller.clear();
+                          category = 'All';
+                          subcategory = 'All';
+                          inStockOnly = false;
+                        }),
+                        child: const Text('Reset filters'),
+                      ),
                     ),
                   )
                 : LayoutBuilder(

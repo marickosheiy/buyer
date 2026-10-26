@@ -33,6 +33,7 @@ class SellerProduct {
     required this.price,
     required this.stock,
     required this.category,
+    this.subcategory = '',
     this.description = '',
     this.active = true,
     this.editable = true,
@@ -40,6 +41,7 @@ class SellerProduct {
   });
   final String id;
   final String name, category, description;
+  final String subcategory;
   final int price, stock;
   final bool active;
   final bool editable;
@@ -89,7 +91,8 @@ class SellerCommerce extends ChangeNotifier {
         name: 'Handwoven market tote',
         price: 45000,
         stock: 12,
-        category: 'Bags',
+        category: "Women's Apparel",
+        subcategory: 'Shoes & Accessories',
         description: 'A reusable everyday market bag.',
       ),
       SellerProduct(
@@ -97,14 +100,16 @@ class SellerCommerce extends ChangeNotifier {
         name: 'Rattan fruit basket',
         price: 35000,
         stock: 3,
-        category: 'Home & Living',
+        category: 'Home and Garden',
+        subcategory: 'Furniture & Decor',
       ),
       SellerProduct(
         id: 'SP3',
         name: 'Woven table runner',
         price: 28000,
         stock: 0,
-        category: 'Home & Living',
+        category: 'Home and Garden',
+        subcategory: 'Bedding & Bath',
         active: false,
       ),
     ]);
@@ -212,6 +217,7 @@ class SellerCommerce extends ChangeNotifier {
           price: p['price'],
           stock: p['stock'],
           category: p['category'],
+          subcategory: p['subcategory'] as String? ?? '',
           description: p['description'],
           active: p['active'],
           editable: (p['variants'] as List).length == 1,
@@ -306,6 +312,7 @@ class SellerCommerce extends ChangeNotifier {
         'price': product.price,
         'stock': product.stock,
         'category': product.category,
+        'subcategory': product.subcategory,
         'description': product.description,
         'active': product.active,
         'media': product.media.map((m) => m.toJson()).toList(),
@@ -365,6 +372,7 @@ class SellerCommerce extends ChangeNotifier {
         price: p.price,
         stock: p.stock + order.quantity,
         category: p.category,
+        subcategory: p.subcategory,
         description: p.description,
         active: p.active,
         media: p.media,

@@ -2,6 +2,8 @@ import 'product_media.dart';
 
 import 'package:flutter/material.dart';
 
+import '../product_categories.dart';
+
 import '../design/components.dart';
 import '../design/lumear_theme.dart';
 import 'seller_commerce.dart';
@@ -179,6 +181,7 @@ class _SellerToolsScreenState extends State<SellerToolsScreen> {
                             const SizedBox(height: 12),
                           ],
                           Text('${sellerMoney(p.price)} · ${p.category}'),
+                          if (p.subcategory.isNotEmpty) Text(p.subcategory),
                           const SizedBox(height: 8),
                           Text(
                             p.stock == 0
@@ -213,6 +216,7 @@ class _SellerToolsScreenState extends State<SellerToolsScreen> {
                                         price: p.price,
                                         stock: p.stock,
                                         category: p.category,
+                                        subcategory: p.subcategory,
                                         description: p.description,
                                         active: active,
                                         media: p.media,
@@ -855,13 +859,17 @@ class _ProductEditorState extends State<_ProductEditor> {
     }
   }
 
-  late final categories = widget.categories
-      .map((category) => category.trim())
-      .where((category) => category.isNotEmpty)
-      .toSet()
-      .toList();
-  late String? category = categories.contains(widget.product?.category)
-      ? widget.product?.category
+  late final categories = ProductCategories.names;
+  late String? category =
+      widget.product == null ||
+          !categories.contains(
+            ProductCategories.canonical(widget.product!.category),
+          )
+      ? null
+      : ProductCategories.canonical(widget.product!.category);
+  late String? subcategory =
+      ProductCategories.children(category).contains(widget.product?.subcategory)
+      ? widget.product!.subcategory
       : null;
   late final fields = {
     'name': TextEditingController(text: widget.product?.name),
@@ -949,6 +957,7 @@ class _ProductEditorState extends State<_ProductEditor> {
                   'price': 'Price (₱)',
                   'stock': 'Available stock',
                   'category': 'Category',
+                  'subcategory': 'Subcategory',
                   'description': 'Description (optional)',
                 }.entries)
                   Padding(
@@ -973,9 +982,40 @@ class _ProductEditorState extends State<_ProductEditor> {
                             ],
                             onChanged: categories.isEmpty
                                 ? null
-                                : (value) => setState(() => category = value),
+                                : (value) => setState(() {
+                                    category = value;
+                                    subcategory = null;
+                                  }),
                             validator: (value) =>
                                 value == null ? 'Choose a category.' : null,
+                          )
+                        : entry.key == 'subcategory'
+                        ? DropdownButtonFormField<String>(
+                            key: ValueKey(category),
+                            initialValue: subcategory,
+                            isExpanded: true,
+                            decoration: const InputDecoration(
+                              labelText: 'Subcategory',
+                              hintText: 'Choose a subcategory',
+                            ),
+                            items: [
+                              for (final child in ProductCategories.children(
+                                category,
+                              ))
+                                DropdownMenuItem(
+                                  value: child,
+                                  child: Text(
+                                    child,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                            ],
+                            onChanged: category == null
+                                ? null
+                                : (value) =>
+                                      setState(() => subcategory = value),
+                            validator: (value) =>
+                                value == null ? 'Choose a subcategory.' : null,
                           )
                         : TextFormField(
                             controller: fields[entry.key],
@@ -1033,6 +1073,7 @@ class _ProductEditorState extends State<_ProductEditor> {
                           .round(),
                       stock: int.parse(fields['stock']!.text.trim()),
                       category: category!,
+                      subcategory: subcategory!,
                       description: fields['description']!.text.trim(),
                       active: widget.product?.active ?? true,
                       media: List.unmodifiable(media),

@@ -39,6 +39,7 @@ class LumearProduct {
   final String id;
   final String name;
   final String category;
+  final String subcategory;
   final String description;
   final double price;
   final double? originalPrice;
@@ -60,6 +61,7 @@ class LumearProduct {
     required this.id,
     required this.name,
     required this.category,
+    this.subcategory = '',
     required this.description,
     required this.price,
     required this.imageUrl,
@@ -104,6 +106,7 @@ class ProductCatalog extends ChangeNotifier {
         id: p['id'].toString(),
         name: p['name'],
         category: p['category'],
+        subcategory: p['subcategory'] as String? ?? '',
         description: p['description'] ?? '',
         price: (p['price'] as num) / 100,
         imageUrl: images.firstOrNull ?? '',
@@ -161,7 +164,8 @@ const List<LumearProduct> sampleLumearProducts = [
   LumearProduct(
     id: 'shirt-classic',
     name: 'Classic Everyday Cotton Shirt',
-    category: 'Fashion',
+    category: "Men's Apparel",
+    subcategory: 'Casual Shirts & Pants',
     description: 'A soft, everyday cotton shirt with a relaxed fit. Easy to style for school, work, or weekends. Please check the size guide and available stock before ordering.',
     price: 499,
     originalPrice: 599,
@@ -214,7 +218,8 @@ const List<LumearProduct> sampleLumearProducts = [
   LumearProduct(
     id: 'headset-wireless',
     name: 'Wireless Over-Ear Headphones',
-    category: 'Electronics',
+    category: 'Electronics and Gadgets',
+    subcategory: 'Audio & Video Equipment',
     description: 'Comfortable over-ear headphones for music, study sessions, and everyday listening. Includes a charging cable and quick-start guide.',
     price: 899,
     originalPrice: 1199,
@@ -254,7 +259,8 @@ const List<LumearProduct> sampleLumearProducts = [
   LumearProduct(
     id: 'baby-essentials',
     name: 'Soft Baby Essentials Set',
-    category: 'Baby',
+    category: 'Kids and Baby',
+    subcategory: 'Safety and Health',
     description: 'A gentle, practical starter set made for everyday baby care. Check the product label and included items before use.',
     price: 750,
     imageUrl: 'https://images.unsplash.com/photo-1519689680058-324335c77eba',
@@ -283,7 +289,8 @@ const List<LumearProduct> sampleLumearProducts = [
   LumearProduct(
     id: 'gold-jewelry',
     name: 'Minimal Gold-Tone Necklace',
-    category: 'Jewelry',
+    category: "Women's Apparel",
+    subcategory: 'Shoes & Accessories',
     description: 'A minimal gold-tone accessory designed for everyday outfits and special occasions. Keep away from water and chemicals to help preserve its finish.',
     price: 1299,
     originalPrice: 1499,
@@ -318,7 +325,8 @@ const List<LumearProduct> sampleLumearProducts = [
   LumearProduct(
     id: 'gaming-controller',
     name: 'Wireless Gaming Controller',
-    category: 'Gaming',
+    category: 'Electronics and Gadgets',
+    subcategory: 'Mobile Phones & Accessories',
     description: 'A wireless controller for compatible gaming setups. Confirm compatibility with your device before purchasing.',
     price: 1499,
     originalPrice: 1799,
@@ -349,7 +357,8 @@ const List<LumearProduct> sampleLumearProducts = [
   LumearProduct(
     id: 'home-organizer',
     name: 'Modern Home Organizer',
-    category: 'Home',
+    category: 'Home and Garden',
+    subcategory: 'Furniture & Decor',
     description: 'A simple organizer to keep everyday essentials tidy. Check the dimensions of your space before ordering.',
     price: 650,
     imageUrl: 'https://images.unsplash.com/photo-1555041469-a586c61ea9bc',
@@ -378,7 +387,8 @@ const List<LumearProduct> sampleLumearProducts = [
   LumearProduct(
     id: 'skincare-kit',
     name: 'Daily Skincare Travel Kit',
-    category: 'Beauty',
+    category: 'Health and Beauty',
+    subcategory: 'Skincare Products',
     description: 'A compact skincare kit for travel and everyday routines. Review the ingredients and product labels before use.',
     price: 399,
     imageUrl: 'https://images.unsplash.com/photo-1596462502278-27bfdc403348',
@@ -408,7 +418,8 @@ const List<LumearProduct> sampleLumearProducts = [
   LumearProduct(
     id: 'backpack-daily',
     name: 'Everyday Canvas Backpack',
-    category: 'Fashion',
+    category: "Men's Apparel",
+    subcategory: 'Shoes & Accessories',
     description: 'A lightweight everyday backpack for school, commuting, and short trips. Fits daily essentials with a clean, minimal look.',
     price: 799,
     originalPrice: 999,

@@ -9,6 +9,7 @@ import '../design/brand_art.dart';
 import '../design/lumear_image.dart';
 import '../design/lumear_theme.dart';
 import '../product_model.dart';
+import '../product_categories.dart';
 import '../search_screen.dart';
 import '../services/wishlist_manager.dart';
 import '../widgets/banner_carousel.dart';
@@ -294,24 +295,10 @@ class HomeScreen extends StatelessWidget {
                   child: ListView(
                     scrollDirection: Axis.horizontal,
                     children: [
-                      for (final category
-                          in (ProductCatalog.instance.connected
-                              ? [
-                                  'All finds',
-                                  ...lumearProducts
-                                      .map((p) => p.category)
-                                      .toSet(),
-                                ]
-                              : const [
-                                  'All finds',
-                                  'Fashion',
-                                  'Electronics',
-                                  'Beauty',
-                                  'Home',
-                                  'Jewelry',
-                                  'Gaming',
-                                  'Baby',
-                                ]))
+                      for (final category in [
+                        'All finds',
+                        ...ProductCategories.names,
+                      ])
                         Padding(
                           padding: const EdgeInsets.only(right: 7),
                           child: ActionChip(

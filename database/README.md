@@ -26,7 +26,7 @@ checked structurally but has not been imported or runtime-tested on MySQL.
 | --- | --- |
 | Accounts and login | Users, UserIdentities, AuthSessions |
 | Sellers and addresses | Shops, Addresses |
-| Catalog | Categories, Products, ProductVariants, ProductMedia |
+| Catalog | Categories, Subcategories, Products, ProductVariants, ProductMedia |
 | Shopping | CartItems, Wishlist, ShopFollowers |
 | Promotions | Vouchers, UserVouchers, OrderVouchers |
 | Orders and payments | Orders, OrderItems, Payments, OrderStatusHistory, RefundRequests |
@@ -121,6 +121,7 @@ See `../INTEGRATION.md` and the Dart workspace parsers for complete response fie
 | Product `id`, `name`, `description` | Products.product_id, product_name, description |
 | Product `seller` | Shops.seller_user_id, **not shop_id** |
 | Product `store`, `category` | Shops.shop_name, Categories.category_name |
+| Product `subcategory` | Subcategories.subcategory_name, joined through Products.subcategory_id |
 | Product `variants` | ProductVariants: id, label, price, stock, active |
 | Product `images` / `media` | ProductMedia ordered by sort_order, media_id |
 | Product rating and review_count | Aggregate Reviews through OrderItems |
@@ -175,3 +176,31 @@ by CREATE TABLE statements.
 MySQL references: [CREATE TABLE](https://dev.mysql.com/doc/refman/8.4/en/create-table.html),
 [foreign keys](https://dev.mysql.com/doc/refman/8.4/en/create-table-foreign-keys.html),
 [CHECK constraints](https://dev.mysql.com/doc/refman/8.4/en/create-table-check-constraints.html).
+
+## Updated category hierarchy (October 26, 2026)
+
+The fresh-database script now creates 30 tables and seeds the eight main categories
+and 48 subcategories below. Products must reference a valid subcategory within
+their selected main category. The existing 10% commission calculation is unchanged.
+
+| Main category | Subcategories |
+| --- | --- |
+| Pet Supplies | Dog Food & Treats; Cat Litter & Accessories; Aquariums & Fish Supplies; Bird Feeders & Food; Pet Grooming Products; Pet Health & Wellness |
+| Electronics and Gadgets | Mobile Phones & Accessories; Laptops, Desktops & Monitors; Audio & Video Equipment; Smart Home Devices; Cameras & Photography; Wearable Technology |
+| Women's Apparel | Dresses & Skirts; Tops & Blouses; Activewear & Yoga Pants; Lingerie & Sleepwear; Jackets & Coats; Shoes & Accessories |
+| Men's Apparel | Suits & Blazers; Casual Shirts & Pants; Outerwear & Jackets; Activewear & Fitness Gear; Shoes & Accessories; Grooming Products |
+| Kids and Baby | Baby Clothes & Accessories; Toys & Games; Educational Materials; Strollers & Gear; Nursery Furniture; Safety and Health |
+| Home and Garden | Kitchen Appliances; Furniture & Decor; Gardening Tools; Outdoor Living; Home Improvement Tools; Bedding & Bath |
+| Sports and Outdoors | Fitness Equipment; Camping & Hiking Gear; Sports Apparel; Cycling & Bikes; Water Sports; Team Sports Equipment |
+| Health and Beauty | Skincare Products; Haircare Solutions; Makeup & Cosmetics; Personal Care Appliances; Men's Grooming; Health Supplements |
+
+The API accepts/returns category and subcategory display names; map them to
+Categories.category_id and Subcategories.subcategory_id in the shared backend.
+Subcategory names repeat across parents (for example Shoes & Accessories), so
+always resolve a subcategory together with its parent category.
+
+This is a replacement proposal for a fresh database, not an automatic migration.
+If the older schema was already imported, the partner must migrate existing
+categories/products, create and backfill subcategories, and only then enforce
+the new NOT NULL/composite foreign-key rules. Do not rerun CREATE DATABASE on
+an existing database. No database connection or import has been performed.

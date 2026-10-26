@@ -82,10 +82,21 @@ CREATE TABLE Categories (
     is_active BOOLEAN NOT NULL DEFAULT TRUE
 ) ENGINE=InnoDB;
 
+CREATE TABLE Subcategories (
+    subcategory_id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+    category_id BIGINT UNSIGNED NOT NULL,
+    subcategory_name VARCHAR(100) NOT NULL,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    UNIQUE (category_id, subcategory_name),
+    UNIQUE (subcategory_id, category_id),
+    FOREIGN KEY (category_id) REFERENCES Categories(category_id)
+) ENGINE=InnoDB;
+
 CREATE TABLE Products (
     product_id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
     shop_id BIGINT UNSIGNED NOT NULL,
     category_id BIGINT UNSIGNED NOT NULL,
+    subcategory_id BIGINT UNSIGNED NOT NULL,
     product_name VARCHAR(200) NOT NULL,
     description TEXT NOT NULL,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
@@ -94,7 +105,8 @@ CREATE TABLE Products (
     UNIQUE (product_id, shop_id),
     INDEX idx_products_category (category_id, is_active),
     FOREIGN KEY (shop_id) REFERENCES Shops(shop_id),
-    FOREIGN KEY (category_id) REFERENCES Categories(category_id)
+    FOREIGN KEY (category_id) REFERENCES Categories(category_id),
+    FOREIGN KEY (subcategory_id, category_id) REFERENCES Subcategories(subcategory_id, category_id)
 ) ENGINE=InnoDB;
 
 CREATE TABLE ProductVariants (
@@ -398,15 +410,70 @@ CREATE TABLE AssistantMessages (
     FOREIGN KEY (conversation_id) REFERENCES AssistantConversations(conversation_id)
 ) ENGINE=InnoDB;
 
--- Reference categories only. No demo users or plaintext passwords are inserted.
-INSERT INTO Categories (category_name, description) VALUES
-('Fashion', 'Clothing and everyday apparel'),
-('Electronics', 'Gadgets and electronic accessories'),
-('Home & Living', 'Household items and decor'),
-('Beauty & Personal Care', 'Beauty, grooming and personal care products'),
-('Bags', 'Bags, totes and carrying accessories'),
-('Baby & Kids', 'Baby and children essentials'),
-('Sports & Outdoors', 'Fitness and outdoor products');
+-- Eight main categories and 48 subcategories. No demo users or passwords.
+INSERT INTO Categories (category_name) VALUES ('Pet Supplies');
+INSERT INTO Subcategories (category_id, subcategory_name) SELECT category_id, 'Dog Food & Treats' FROM Categories WHERE category_name = 'Pet Supplies';
+INSERT INTO Subcategories (category_id, subcategory_name) SELECT category_id, 'Cat Litter & Accessories' FROM Categories WHERE category_name = 'Pet Supplies';
+INSERT INTO Subcategories (category_id, subcategory_name) SELECT category_id, 'Aquariums & Fish Supplies' FROM Categories WHERE category_name = 'Pet Supplies';
+INSERT INTO Subcategories (category_id, subcategory_name) SELECT category_id, 'Bird Feeders & Food' FROM Categories WHERE category_name = 'Pet Supplies';
+INSERT INTO Subcategories (category_id, subcategory_name) SELECT category_id, 'Pet Grooming Products' FROM Categories WHERE category_name = 'Pet Supplies';
+INSERT INTO Subcategories (category_id, subcategory_name) SELECT category_id, 'Pet Health & Wellness' FROM Categories WHERE category_name = 'Pet Supplies';
+
+INSERT INTO Categories (category_name) VALUES ('Electronics and Gadgets');
+INSERT INTO Subcategories (category_id, subcategory_name) SELECT category_id, 'Mobile Phones & Accessories' FROM Categories WHERE category_name = 'Electronics and Gadgets';
+INSERT INTO Subcategories (category_id, subcategory_name) SELECT category_id, 'Laptops, Desktops & Monitors' FROM Categories WHERE category_name = 'Electronics and Gadgets';
+INSERT INTO Subcategories (category_id, subcategory_name) SELECT category_id, 'Audio & Video Equipment' FROM Categories WHERE category_name = 'Electronics and Gadgets';
+INSERT INTO Subcategories (category_id, subcategory_name) SELECT category_id, 'Smart Home Devices' FROM Categories WHERE category_name = 'Electronics and Gadgets';
+INSERT INTO Subcategories (category_id, subcategory_name) SELECT category_id, 'Cameras & Photography' FROM Categories WHERE category_name = 'Electronics and Gadgets';
+INSERT INTO Subcategories (category_id, subcategory_name) SELECT category_id, 'Wearable Technology' FROM Categories WHERE category_name = 'Electronics and Gadgets';
+
+INSERT INTO Categories (category_name) VALUES ('Women''s Apparel');
+INSERT INTO Subcategories (category_id, subcategory_name) SELECT category_id, 'Dresses & Skirts' FROM Categories WHERE category_name = 'Women''s Apparel';
+INSERT INTO Subcategories (category_id, subcategory_name) SELECT category_id, 'Tops & Blouses' FROM Categories WHERE category_name = 'Women''s Apparel';
+INSERT INTO Subcategories (category_id, subcategory_name) SELECT category_id, 'Activewear & Yoga Pants' FROM Categories WHERE category_name = 'Women''s Apparel';
+INSERT INTO Subcategories (category_id, subcategory_name) SELECT category_id, 'Lingerie & Sleepwear' FROM Categories WHERE category_name = 'Women''s Apparel';
+INSERT INTO Subcategories (category_id, subcategory_name) SELECT category_id, 'Jackets & Coats' FROM Categories WHERE category_name = 'Women''s Apparel';
+INSERT INTO Subcategories (category_id, subcategory_name) SELECT category_id, 'Shoes & Accessories' FROM Categories WHERE category_name = 'Women''s Apparel';
+
+INSERT INTO Categories (category_name) VALUES ('Men''s Apparel');
+INSERT INTO Subcategories (category_id, subcategory_name) SELECT category_id, 'Suits & Blazers' FROM Categories WHERE category_name = 'Men''s Apparel';
+INSERT INTO Subcategories (category_id, subcategory_name) SELECT category_id, 'Casual Shirts & Pants' FROM Categories WHERE category_name = 'Men''s Apparel';
+INSERT INTO Subcategories (category_id, subcategory_name) SELECT category_id, 'Outerwear & Jackets' FROM Categories WHERE category_name = 'Men''s Apparel';
+INSERT INTO Subcategories (category_id, subcategory_name) SELECT category_id, 'Activewear & Fitness Gear' FROM Categories WHERE category_name = 'Men''s Apparel';
+INSERT INTO Subcategories (category_id, subcategory_name) SELECT category_id, 'Shoes & Accessories' FROM Categories WHERE category_name = 'Men''s Apparel';
+INSERT INTO Subcategories (category_id, subcategory_name) SELECT category_id, 'Grooming Products' FROM Categories WHERE category_name = 'Men''s Apparel';
+
+INSERT INTO Categories (category_name) VALUES ('Kids and Baby');
+INSERT INTO Subcategories (category_id, subcategory_name) SELECT category_id, 'Baby Clothes & Accessories' FROM Categories WHERE category_name = 'Kids and Baby';
+INSERT INTO Subcategories (category_id, subcategory_name) SELECT category_id, 'Toys & Games' FROM Categories WHERE category_name = 'Kids and Baby';
+INSERT INTO Subcategories (category_id, subcategory_name) SELECT category_id, 'Educational Materials' FROM Categories WHERE category_name = 'Kids and Baby';
+INSERT INTO Subcategories (category_id, subcategory_name) SELECT category_id, 'Strollers & Gear' FROM Categories WHERE category_name = 'Kids and Baby';
+INSERT INTO Subcategories (category_id, subcategory_name) SELECT category_id, 'Nursery Furniture' FROM Categories WHERE category_name = 'Kids and Baby';
+INSERT INTO Subcategories (category_id, subcategory_name) SELECT category_id, 'Safety and Health' FROM Categories WHERE category_name = 'Kids and Baby';
+
+INSERT INTO Categories (category_name) VALUES ('Home and Garden');
+INSERT INTO Subcategories (category_id, subcategory_name) SELECT category_id, 'Kitchen Appliances' FROM Categories WHERE category_name = 'Home and Garden';
+INSERT INTO Subcategories (category_id, subcategory_name) SELECT category_id, 'Furniture & Decor' FROM Categories WHERE category_name = 'Home and Garden';
+INSERT INTO Subcategories (category_id, subcategory_name) SELECT category_id, 'Gardening Tools' FROM Categories WHERE category_name = 'Home and Garden';
+INSERT INTO Subcategories (category_id, subcategory_name) SELECT category_id, 'Outdoor Living' FROM Categories WHERE category_name = 'Home and Garden';
+INSERT INTO Subcategories (category_id, subcategory_name) SELECT category_id, 'Home Improvement Tools' FROM Categories WHERE category_name = 'Home and Garden';
+INSERT INTO Subcategories (category_id, subcategory_name) SELECT category_id, 'Bedding & Bath' FROM Categories WHERE category_name = 'Home and Garden';
+
+INSERT INTO Categories (category_name) VALUES ('Sports and Outdoors');
+INSERT INTO Subcategories (category_id, subcategory_name) SELECT category_id, 'Fitness Equipment' FROM Categories WHERE category_name = 'Sports and Outdoors';
+INSERT INTO Subcategories (category_id, subcategory_name) SELECT category_id, 'Camping & Hiking Gear' FROM Categories WHERE category_name = 'Sports and Outdoors';
+INSERT INTO Subcategories (category_id, subcategory_name) SELECT category_id, 'Sports Apparel' FROM Categories WHERE category_name = 'Sports and Outdoors';
+INSERT INTO Subcategories (category_id, subcategory_name) SELECT category_id, 'Cycling & Bikes' FROM Categories WHERE category_name = 'Sports and Outdoors';
+INSERT INTO Subcategories (category_id, subcategory_name) SELECT category_id, 'Water Sports' FROM Categories WHERE category_name = 'Sports and Outdoors';
+INSERT INTO Subcategories (category_id, subcategory_name) SELECT category_id, 'Team Sports Equipment' FROM Categories WHERE category_name = 'Sports and Outdoors';
+
+INSERT INTO Categories (category_name) VALUES ('Health and Beauty');
+INSERT INTO Subcategories (category_id, subcategory_name) SELECT category_id, 'Skincare Products' FROM Categories WHERE category_name = 'Health and Beauty';
+INSERT INTO Subcategories (category_id, subcategory_name) SELECT category_id, 'Haircare Solutions' FROM Categories WHERE category_name = 'Health and Beauty';
+INSERT INTO Subcategories (category_id, subcategory_name) SELECT category_id, 'Makeup & Cosmetics' FROM Categories WHERE category_name = 'Health and Beauty';
+INSERT INTO Subcategories (category_id, subcategory_name) SELECT category_id, 'Personal Care Appliances' FROM Categories WHERE category_name = 'Health and Beauty';
+INSERT INTO Subcategories (category_id, subcategory_name) SELECT category_id, 'Men''s Grooming' FROM Categories WHERE category_name = 'Health and Beauty';
+INSERT INTO Subcategories (category_id, subcategory_name) SELECT category_id, 'Health Supplements' FROM Categories WHERE category_name = 'Health and Beauty';
 
 -- Optional inspection queries after importing:
 -- SHOW TABLES;
