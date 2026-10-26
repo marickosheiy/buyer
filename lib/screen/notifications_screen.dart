@@ -115,13 +115,16 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         .toList();
     final unreadCount = notifications.where((n) => n['unread'] == true).length;
     return Scaffold(
+      appBar: AppBar(title: const Text('Notifications')),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(22, 8, 22, 26),
         children: [
           PageHeading(
             'A little heads-up.',
             eyebrow: 'YOUR UPDATES',
-            subtitle: 'Sample updates · tap an update to mark it as read.',
+            subtitle: BuyerData.instance.connected
+                ? 'Your latest updates · tap an update to mark it as read.'
+                : 'Sample updates · tap an update to mark it as read.',
           ),
           Wrap(
             spacing: 8,

@@ -54,6 +54,35 @@ The shared backend must implement validation, upload storage, removal handling,
 and buyer-visible media responses before enabling this feature across accounts.
 The current picker allows five photos up to 5 MB each and one MP4 up to 20 MB.
 
+## Registration address
+
+Contact entry uses the local Philippine mobile format: 11 digits starting with
+`09` (`09XXXXXXXXX`). Registration, address editors, and editable seller contact
+fields filter non-digits, limit input to 11, and validate before saving. Recognized
+existing `+639XXXXXXXXX` contacts are converted to local format when opened in an
+editor. The backend must validate incoming phone values too; these client rules
+do not change the database or verify that a number is reachable or owned by a user.
+
+Registration now includes an `address` object in `POST /auth/register`: `region`,
+`province`, `city`, `barangay`, `street` (house/unit plus street), and `postal_code`
+(a four-digit string). Postal code auto-fill uses the bundled PHLPost lookup;
+users can confirm or correct it. The shared backend must validate this object and
+save it as the new account's address using the account name/phone and its own
+address label/default policy. This is a proposed client payload addition; no live
+backend or database is connected by the registration UI change.
+
+When backend mode is disabled, registration uses `DemoAccounts` in memory instead
+of `/auth/register`; login checks built-in and newly created local accounts.
+Demo mode skips email proof and seller document requirements explicitly. Account
+emails are normalized and unique, credentials use salted digests in memory, and
+nothing is saved to disk. Demo credentials and data must not be used for production
+authentication. Backend mode still requires server registration, email proof and
+seller uploads; a failed backend request never falls back to creating/logging in
+a local account. Accounts clear on process restart; sign-out preserves local
+registration records so another local sign-in can be tested. Initial registration
+profile/address are restored on sign-in; cart/order/wishlist workspace changes
+continue to reset on login as in the existing demo.
+
 ## Seller chat and AI assistant
 
 The Flutter chat client is implemented; these proposed routes still need to be
@@ -88,6 +117,7 @@ service errors when AI is unavailable. No AI provider or live backend is
 configured or verified by this client change.
 
 Assistant history stays in the current inbox session and clears when the workspace
-is closed. Demo seller chats persist in memory across switches between the two
-fictional demo accounts so both sides can be previewed on one device. Connected
+is closed. Demo chats persist in memory across local account switches, scoped by
+buyer and seller identity. Sample product chats are routed to the built-in demo
+seller; registered sellers do not receive sample-shop conversations. Connected
 chat does not read or write that demo history; live history belongs to the backend.

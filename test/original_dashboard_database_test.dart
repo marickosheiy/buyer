@@ -43,12 +43,26 @@ void main() {
                 .widget<LumearDock>(find.byType(LumearDock))
                 .destinations
                 .map((d) => d.label),
-            ['Home', 'Browse', 'Inbox', 'Orders', 'Me'],
+            ['Home', 'Browse', 'Orders', 'Me'],
           );
           expect(find.text('Classic Everyday Cotton Shirt'), findsNothing);
           expect(BuyerData.instance.error, isNull);
           expect(lumearProducts.single.name, 'Database Basket');
           expect(snapshots, 1);
+          final chatRect = tester.getRect(find.byType(FloatingActionButton));
+          final dockRect = tester.getRect(find.byType(LumearDock));
+          expect(chatRect.bottom, lessThanOrEqualTo(dockRect.top));
+          expect(chatRect.center.dx, greaterThan(180));
+          expect(
+            tester.getCenter(find.byTooltip('Notifications')).dy,
+            lessThan(150),
+          );
+          await tester.tap(find.byTooltip('Notifications'));
+          await tester.pumpAndSettle();
+          expect(find.widgetWithText(AppBar, 'Notifications'), findsOneWidget);
+          expect(find.text('Your order is almost here!'), findsNothing);
+          await tester.pageBack();
+          await tester.pumpAndSettle();
           await CartManager.instance.addToCart(
             name: 'Database Basket',
             price: '₱125.00',
@@ -68,9 +82,11 @@ void main() {
           await tester.tap(find.text('Orders').last);
           await tester.pumpAndSettle();
           expect(find.text('LMR-2026-001'), findsNothing);
-          await tester.tap(find.text('Inbox').last);
+          await tester.tap(find.byTooltip('Open chat'));
           await tester.pumpAndSettle();
           expect(find.text('Your order is almost here!'), findsNothing);
+          await tester.pageBack();
+          await tester.pumpAndSettle();
           await tester.tap(find.text('Me').last);
           await tester.pumpAndSettle();
           expect(find.text('Database Buyer'), findsOneWidget);

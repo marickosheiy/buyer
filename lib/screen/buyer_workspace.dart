@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import '../design/components.dart';
 import '../login_page.dart';
 import '../services/api_service.dart';
+import '../services/mobile_number.dart';
 
 /// Buyer workspace backed by the authenticated API, rather than sample records.
 class BuyerWorkspace extends StatefulWidget {
@@ -1379,7 +1380,11 @@ class _BuyerWorkspaceState extends State<BuyerWorkspace> {
     if (!mounted) return;
     final controllers = {
       for (final k in fields.keys)
-        k: TextEditingController(text: initial[k]?.toString() ?? ''),
+        k: TextEditingController(
+          text: k == 'phone'
+              ? MobileNumber.forEditing(initial[k]?.toString() ?? '')
+              : initial[k]?.toString() ?? '',
+        ),
     };
     final photos = <Map<String, dynamic>>[];
     String? formError;
@@ -1439,7 +1444,12 @@ class _BuyerWorkspaceState extends State<BuyerWorkspace> {
                                 controller: controllers[entry.key],
                                 obscureText: entry.key.contains('password'),
                                 enabled: !saving,
-                                maxLength: limits[entry.key],
+                                maxLength: entry.key == 'phone'
+                                    ? MobileNumber.maxLength
+                                    : limits[entry.key],
+                                inputFormatters: entry.key == 'phone'
+                                    ? MobileNumber.inputFormatters
+                                    : null,
                                 maxLines:
                                     entry.key == 'description' ||
                                         entry.key == 'text'
@@ -1511,6 +1521,13 @@ class _BuyerWorkspaceState extends State<BuyerWorkspace> {
                         onPressed: saving
                             ? null
                             : () async {
+                                if (controllers.containsKey('phone') &&
+                                    !MobileNumber.isValid(
+                                      controllers['phone']!.text,
+                                    )) {
+                                  update(() => formError = MobileNumber.error);
+                                  return;
+                                }
                                 update(() {
                                   saving = true;
                                   formError = null;

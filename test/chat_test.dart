@@ -255,7 +255,7 @@ void main() {
     await showInbox(true);
     await tester.pumpAndSettle();
     expect(find.text('Inbox refresh shop'), findsOneWidget);
-    expect(find.byTooltip('Notifications'), findsOneWidget);
+    expect(find.byTooltip('Refresh messages'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

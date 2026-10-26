@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 import '../design/lumear_theme.dart';
 import '../product_model.dart';
 import '../services/chat_service.dart';
-import 'notifications_screen.dart';
 
 class ChatInboxScreen extends StatefulWidget {
   const ChatInboxScreen({
@@ -76,15 +75,6 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
       appBar: AppBar(
         title: const Text('Messages'),
         actions: [
-          if (!widget.seller)
-            IconButton(
-              tooltip: 'Notifications',
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const NotificationsScreen()),
-              ),
-              icon: const Icon(Icons.notifications_outlined),
-            ),
           IconButton(
             tooltip: 'Refresh messages',
             onPressed: loading ? null : refresh,
@@ -117,7 +107,7 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 12),
               child: Text(
-                'Demo messages stay on this device until restart. Switch between the buyer and seller demo accounts to try replying.',
+                'Demo messages stay on this device until restart. Sample shop conversations can be answered from the built-in seller demo account.',
               ),
             ),
           if (loading) const LinearProgressIndicator(),

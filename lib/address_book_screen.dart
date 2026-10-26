@@ -5,6 +5,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 
 import 'services/ui_action.dart';
+import 'services/mobile_number.dart';
 
 import 'package:http/http.dart' as http;
 
@@ -608,7 +609,7 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
       final address = widget.existingAddress!;
 
       nameController.text = address.fullName;
-      phoneController.text = address.phone;
+      phoneController.text = MobileNumber.forEditing(address.phone);
       houseStreetController.text = address.houseStreet;
       postalCodeController.text = address.postalCode;
 
@@ -840,6 +841,11 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
     final name = nameController.text.trim();
     final phone = phoneController.text.trim();
     final houseStreet = houseStreetController.text.trim();
+    if (!MobileNumber.isValid(phone)) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text(MobileNumber.error)));
+      return;
+    }
 
     if (name.isEmpty ||
         phone.isEmpty ||
@@ -1168,6 +1174,12 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
         TextField(
           controller: controller,
           keyboardType: keyboardType,
+          inputFormatters: keyboardType == TextInputType.phone
+              ? MobileNumber.inputFormatters
+              : null,
+          maxLength: keyboardType == TextInputType.phone
+              ? MobileNumber.maxLength
+              : null,
           style: TextStyle(color: darkText, fontSize: 13),
           decoration: InputDecoration(
             hintText: hint,

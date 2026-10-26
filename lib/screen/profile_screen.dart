@@ -161,14 +161,14 @@ class ProfileScreen extends StatelessWidget {
                           ),
                           SizedBox(height: 7),
                           Text(
-                            BuyerData.instance.connected
+                            BuyerData.instance.profile.isNotEmpty
                                 ? BuyerData.instance.profile['name'] ?? ''
                                 : 'Lumear Buyer',
                             style: TextStyle(color: cream, fontSize: 12),
                           ),
                           SizedBox(height: 5),
                           Text(
-                            BuyerData.instance.connected
+                            BuyerData.instance.profile.isNotEmpty
                                 ? BuyerData.instance.profile['email'] ?? ''
                                 : 'lumear@gmail.com',
                             style: TextStyle(color: cream, fontSize: 11),

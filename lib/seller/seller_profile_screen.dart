@@ -4,6 +4,7 @@ import '../design/components.dart';
 import '../design/lumear_theme.dart';
 import '../login_page.dart';
 import '../services/api_service.dart';
+import '../services/mobile_number.dart';
 import 'seller_shop.dart';
 
 class SellerProfileScreen extends StatefulWidget {
@@ -358,7 +359,9 @@ class _ShopEditorState extends State<_ShopEditor> {
     'name': TextEditingController(text: widget.shop.name),
     'description': TextEditingController(text: widget.shop.description),
     'email': TextEditingController(text: widget.shop.email),
-    'phone': TextEditingController(text: widget.shop.phone),
+    'phone': TextEditingController(
+      text: MobileNumber.forEditing(widget.shop.phone),
+    ),
   };
 
   @override
@@ -398,6 +401,7 @@ class _ShopEditorState extends State<_ShopEditor> {
                           (field.key == 'email' || field.key == 'phone'),
                       decoration: InputDecoration(
                         labelText: field.value,
+                        errorMaxLines: 2,
                         helperText: field.key == 'owner' || field.key == 'name'
                             ? 'Required'
                             : 'Optional',
@@ -405,9 +409,12 @@ class _ShopEditorState extends State<_ShopEditor> {
                       maxLength: field.key == 'description'
                           ? 300
                           : field.key == 'phone'
-                          ? 20
+                          ? MobileNumber.maxLength
                           : 100,
                       maxLines: field.key == 'description' ? 3 : 1,
+                      inputFormatters: field.key == 'phone'
+                          ? MobileNumber.inputFormatters
+                          : null,
                       keyboardType: field.key == 'email'
                           ? TextInputType.emailAddress
                           : field.key == 'phone'
@@ -427,11 +434,8 @@ class _ShopEditorState extends State<_ShopEditor> {
                         }
                         if (field.key == 'phone' &&
                             text.isNotEmpty &&
-                            (!RegExp(r'^\+?[\d\s()-]+$').hasMatch(text) ||
-                                text.replaceAll(RegExp(r'\D'), '').length < 7 ||
-                                text.replaceAll(RegExp(r'\D'), '').length >
-                                    15)) {
-                          return 'Enter a valid mobile number.';
+                            !MobileNumber.isValid(text)) {
+                          return MobileNumber.error;
                         }
                         return null;
                       },

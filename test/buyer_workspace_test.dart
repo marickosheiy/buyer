@@ -36,7 +36,7 @@ void main() {
                     find.widgetWithText(TextButton, 'Create an account'),
                   )
                   .onPressed,
-              isNull,
+              isNotNull,
             );
             expect(find.textContaining('connected backend'), findsNothing);
             await tester.tap(
@@ -85,7 +85,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(
         find.text(
-          'Invalid demo email or password. Use an account shown above.',
+          'Invalid demo email or password. Use a demo account or one you created this session.',
         ),
         findsOneWidget,
       );

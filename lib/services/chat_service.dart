@@ -1,5 +1,6 @@
 import '../product_model.dart';
 import 'api_service.dart';
+import 'demo_accounts.dart';
 
 class ChatMessage {
   const ChatMessage({
@@ -24,14 +25,23 @@ class ChatThread {
   final String name;
 }
 
-/// Demo conversations belong only to the two fictional preview accounts.
+/// Demo conversations are scoped to local preview accounts.
 /// Connected conversations always come from the authenticated shared service.
 class ChatService {
-  ChatService({required this.connected, this.seller = false});
+  ChatService({required this.connected, this.seller = false})
+    : _demoUser = DemoAccounts.current?.role == (seller ? 'seller' : 'buyer')
+          ? DemoAccounts.current!.email
+          : (seller ? 'seller@lumear.com' : 'lumear@gmail.com'),
+      _demoName = DemoAccounts.current?.name ?? 'Demo buyer';
   final bool connected;
   final bool seller;
+  final String _demoUser, _demoName;
   final List<ChatMessage> assistantHistory = [];
-  static final Map<String, String> _demoShops = {};
+  static final Map<
+    String,
+    ({String shop, String buyer, String buyerName, String seller})
+  >
+  _demoShops = {};
   static final Map<String, List<({String text, bool seller, DateTime date})>>
   _demoMessages = {};
 
@@ -39,10 +49,15 @@ class ChatService {
     if (!connected) {
       return [
         for (final entry in _demoShops.entries)
-          ChatThread(
-            id: entry.key,
-            name: seller ? 'Demo buyer · ${entry.value}' : entry.value,
-          ),
+          if (seller
+              ? entry.value.seller == _demoUser
+              : entry.value.buyer == _demoUser)
+            ChatThread(
+              id: entry.key,
+              name: seller
+                  ? '${entry.value.buyerName} · ${entry.value.shop}'
+                  : entry.value.shop,
+            ),
       ];
     }
     final data = await ApiService.get('/chat/threads');
@@ -63,14 +78,25 @@ class ChatService {
       );
       return ChatThread(id: row['id'].toString(), name: row['name'] as String);
     }
-    final id = product.shopName;
-    _demoShops[id] = product.shopName;
+    if (seller) {
+      throw const ApiException(
+        'Open buyer conversations from your chat inbox.',
+      );
+    }
+    final id = '$_demoUser|${product.shopName}';
+    _demoShops[id] = (
+      shop: product.shopName,
+      buyer: _demoUser,
+      buyerName: _demoName.isEmpty ? 'Demo buyer' : _demoName,
+      seller: 'seller@lumear.com',
+    );
     _demoMessages.putIfAbsent(id, () => []);
     return ChatThread(id: id, name: product.shopName);
   }
 
   Future<List<ChatMessage>> messages(ChatThread thread) async {
     if (!connected) {
+      _checkDemoAccess(thread);
       return [
         for (final m in _demoMessages[thread.id] ?? [])
           ChatMessage(text: m.text, mine: m.seller == seller, date: m.date),
@@ -91,11 +117,22 @@ class ChatService {
         body: {'text': text, 'request_id': requestId},
       );
     } else {
+      _checkDemoAccess(thread);
       (_demoMessages[thread.id] ??= []).add((
         text: text,
         seller: seller,
         date: DateTime.now(),
       ));
+    }
+  }
+
+  void _checkDemoAccess(ChatThread thread) {
+    final entry = _demoShops[thread.id];
+    if (entry == null ||
+        (seller ? entry.seller != _demoUser : entry.buyer != _demoUser)) {
+      throw const ApiException(
+        'This conversation belongs to another demo account.',
+      );
     }
   }
 

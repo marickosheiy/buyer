@@ -7,6 +7,7 @@ import 'design/lumear_theme.dart';
 import 'seller/seller_dashboard_screen.dart';
 import 'services/api_service.dart';
 import 'services/google_login.dart';
+import 'services/demo_accounts.dart';
 import 'widgets/email_verification_form.dart';
 import 'services/buyer_data.dart';
 import 'screen/dashboard_screen.dart';
@@ -37,6 +38,12 @@ class _LoginPageState extends State<LoginPage> {
 
   bool isLoading = false;
   String? loginError;
+
+  @override
+  void initState() {
+    super.initState();
+    DemoAccounts.signOut();
+  }
 
   // ============================================================
 
@@ -72,13 +79,14 @@ class _LoginPageState extends State<LoginPage> {
       loginError = null;
     });
 
-    bool isSeller = email == 'seller@lumear.com' && password == 'Seller123';
-    final isBuyer = email == 'lumear@gmail.com' && password == 'Lumear123';
-    if (!backendEnabled && !isBuyer && !isSeller) {
+    final demoAccount = backendEnabled
+        ? null
+        : DemoAccounts.signIn(email, password);
+    bool isSeller = demoAccount?.role == 'seller';
+    if (!backendEnabled && demoAccount == null) {
       setState(() {
         isLoading = false;
-        loginError =
-            'Invalid demo email or password. Use an account shown above.';
+        loginError = 'Invalid demo email or password. Use a demo account or one you created this session.';
       });
       return;
     }
@@ -115,6 +123,34 @@ class _LoginPageState extends State<LoginPage> {
     OrderManager.instance.clearOrders();
     AddressManager.instance.addresses.value = [];
     WishlistManager.instance.clear();
+    if (!backendEnabled) {
+      final account = DemoAccounts.current;
+      if (account != null) {
+        BuyerData.instance.profile = {
+          'name': account.name,
+          'email': account.email,
+          'phone': account.phone,
+        };
+        final address = account.address;
+        if (address != null) {
+          AddressManager.instance.addresses.value = [
+            SavedAddress(
+              id: 'demo-registration',
+              label: 'Home',
+              fullName: account.name,
+              phone: account.phone,
+              region: address['region'] ?? '',
+              province: address['province'] ?? '',
+              cityMunicipality: address['city'] ?? '',
+              barangay: address['barangay'] ?? '',
+              houseStreet: address['street'] ?? '',
+              postalCode: address['postal_code'] ?? '',
+              isDefault: true,
+            ),
+          ];
+        }
+      }
+    }
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(
@@ -471,7 +507,7 @@ class _LoginPageState extends State<LoginPage> {
                                 const Padding(
                                   padding: EdgeInsets.only(bottom: 8),
                                   child: Text(
-                                    'Demo mode. Changes last for this session. Registration and email verification will be available when the shared service is connected.',
+                                    'Demo mode. Create a local account or use an account above. Demo accounts reset when the app restarts. No real email verification is sent.',
                                     textAlign: TextAlign.center,
                                     style: TextStyle(fontSize: 12),
                                   ),
@@ -488,12 +524,13 @@ class _LoginPageState extends State<LoginPage> {
                                     ),
                                   ),
                                   TextButton(
-                                    onPressed: backendEnabled && !isLoading
+                                    onPressed: !isLoading
                                         ? () => Navigator.push(
                                             context,
                                             MaterialPageRoute(
-                                              builder: (_) =>
-                                                  const RegisterPage(),
+                                              builder: (_) => RegisterPage(
+                                                useBackend: backendEnabled,
+                                              ),
                                             ),
                                           )
                                         : null,

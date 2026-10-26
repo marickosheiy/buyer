@@ -3,9 +3,13 @@ import 'design/lumear_theme.dart';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'design/components.dart';
 import 'services/api_service.dart';
+import 'services/postal_code_service.dart';
+import 'services/mobile_number.dart';
+import 'services/demo_accounts.dart';
 import 'widgets/email_verification_form.dart';
 
 import 'package:http/http.dart' as http;
@@ -14,13 +18,17 @@ import 'package:file_picker/file_picker.dart';
 const String apiBaseUrl = 'https://psgc.cloud/api/v2';
 
 class RegisterPage extends StatefulWidget {
-  const RegisterPage({super.key});
+  const RegisterPage({super.key, this.useBackend});
+  final bool? useBackend;
 
   @override
   State<RegisterPage> createState() => _RegisterPageState();
 }
 
 class _RegisterPageState extends State<RegisterPage> {
+  bool get backendEnabled =>
+      widget.useBackend ??
+      const bool.fromEnvironment('ENABLE_BUYER_BACKEND', defaultValue: false);
   int currentStep = 0;
   bool isCreatingAccount = false;
   String? verificationToken, verifiedEmail;
@@ -86,6 +94,10 @@ class _RegisterPageState extends State<RegisterPage> {
   final streetController = TextEditingController();
 
   final houseController = TextEditingController();
+  final postalCodeController = TextEditingController();
+  bool loadingPostalCode = false;
+  String? postalCodeNotice;
+  int _postalRequest = 0;
 
   // ============================================================
 
@@ -120,8 +132,6 @@ class _RegisterPageState extends State<RegisterPage> {
   // ============================================================
 
   static final _emailRegex = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$');
-
-  static final _phoneRegex = RegExp(r'^(09\d{9}|\+639\d{9})$');
 
   static final _passwordRegex = RegExp(
     r'^(?=.*[A-Z])(?=.*[a-z])(?=.*\d).{8,}$',
@@ -210,6 +220,9 @@ class _RegisterPageState extends State<RegisterPage> {
     streetController.dispose();
 
     houseController.dispose();
+    postalCodeController.dispose();
+    shopNameController.dispose();
+    shopDescriptionController.dispose();
 
     super.dispose();
   }
@@ -448,6 +461,7 @@ class _RegisterPageState extends State<RegisterPage> {
   // ============================================================
 
   Future<void> loadProvinces(String regionCode) async {
+    clearPostalCode();
     final requestId = ++_provinceRequest;
 
     setState(() {
@@ -498,6 +512,7 @@ class _RegisterPageState extends State<RegisterPage> {
   // ============================================================
 
   Future<void> loadMunicipalities(String provinceCode) async {
+    clearPostalCode();
     final requestId = ++_municipalityRequest;
 
     setState(() {
@@ -613,6 +628,39 @@ class _RegisterPageState extends State<RegisterPage> {
         onAction: () => loadBarangays(municipalityCode),
       );
     }
+  }
+
+  void clearPostalCode() {
+    _postalRequest++;
+    postalCodeController.clear();
+    loadingPostalCode = false;
+    postalCodeNotice = null;
+  }
+
+  Future<void> fillPostalCode() async {
+    final request = ++_postalRequest;
+    final province = selectedProvinceName ?? '';
+    final municipality = selectedMunicipalityName ?? '';
+    setState(() {
+      postalCodeController.clear();
+      loadingPostalCode = true;
+      postalCodeNotice = null;
+    });
+    String? code;
+    try {
+      final lookup = await PostalCodeService.load();
+      code = lookup.find(province: province, municipality: municipality);
+    } catch (_) {
+      // Manual entry remains available if the bundled lookup cannot be read.
+    }
+    if (!mounted || request != _postalRequest) return;
+    setState(() {
+      postalCodeController.text = code ?? '';
+      loadingPostalCode = false;
+      postalCodeNotice = code == null
+          ? 'No single postal code found. Enter your four-digit postal code.'
+          : 'Filled automatically from your selected city / municipality.';
+    });
   }
 
   // ============================================================
@@ -750,8 +798,8 @@ class _RegisterPageState extends State<RegisterPage> {
         return;
       }
 
-      if (!_phoneRegex.hasMatch(phone)) {
-        showMessage('Please enter a valid PH mobile number.');
+      if (!MobileNumber.isValid(phone)) {
+        showMessage(MobileNumber.error);
 
         return;
       }
@@ -787,6 +835,15 @@ class _RegisterPageState extends State<RegisterPage> {
 
         return;
       }
+      if (loadingPostalCode ||
+          !RegExp(r'^\d{4}$').hasMatch(postalCodeController.text.trim())) {
+        showMessage(
+          loadingPostalCode
+              ? 'Please wait while the postal code is filled.'
+              : 'Please enter a valid four-digit postal code.',
+        );
+        return;
+      }
     }
 
     // ==========================================================
@@ -820,22 +877,32 @@ class _RegisterPageState extends State<RegisterPage> {
 
   Future<void> createAccount() async {
     if (isCreatingAccount) return;
+    if (!MobileNumber.isValid(phoneController.text)) {
+      showMessage(MobileNumber.error);
+      return;
+    }
+    if (!RegExp(r'^\d{4}$').hasMatch(postalCodeController.text.trim())) {
+      showMessage('Please check the postal code in your address.');
+      return;
+    }
     if (selectedAccountType == 'Seller') {
       if (shopNameController.text.trim().isEmpty ||
           shopDescriptionController.text.trim().isEmpty) {
         showMessage('Please complete your shop name and description.');
         return;
       }
-      if (governmentIdFileName == null ||
-          selfieWithIdFileName == null ||
-          businessDocumentFileName == null) {
+      if (backendEnabled &&
+          (governmentIdFileName == null ||
+              selfieWithIdFileName == null ||
+              businessDocumentFileName == null)) {
         showMessage('Please select all required seller documents.');
         return;
       }
     }
 
-    if (verificationToken == null ||
-        verifiedEmail != emailController.text.trim().toLowerCase()) {
+    if (backendEnabled &&
+        (verificationToken == null ||
+            verifiedEmail != emailController.text.trim().toLowerCase())) {
       showMessage('Verify your email before creating your account.');
       return;
     }
@@ -867,30 +934,43 @@ class _RegisterPageState extends State<RegisterPage> {
     {
       setState(() => isCreatingAccount = true);
       try {
-        await ApiService.post(
-          '/auth/register',
-          body: {
-            'name': [
-              firstNameController.text.trim(),
-              middleNameController.text.trim(),
-              lastNameController.text.trim(),
-            ].where((s) => s.isNotEmpty).join(' '),
-            'email': emailController.text.trim(),
-            'verification_token': verificationToken,
-            'account_type': selectedAccountType.toLowerCase(),
-            if (selectedAccountType == 'Seller') ...{
-              'shop_name': shopNameController.text.trim(),
-              'shop_description': shopDescriptionController.text.trim(),
-              'documents': sellerDocuments,
-            },
-            'phone': phoneController.text.trim(),
-            'password': passwordController.text,
-            'date_of_birth': selectedDateOfBirth!
-                .toIso8601String()
-                .split('T')
-                .first,
+        final body = <String, dynamic>{
+          'name': [
+            firstNameController.text.trim(),
+            middleNameController.text.trim(),
+            lastNameController.text.trim(),
+          ].where((s) => s.isNotEmpty).join(' '),
+          'email': emailController.text.trim(),
+          'verification_token': verificationToken,
+          'account_type': selectedAccountType.toLowerCase(),
+          if (selectedAccountType == 'Seller') ...{
+            'shop_name': shopNameController.text.trim(),
+            'shop_description': shopDescriptionController.text.trim(),
+            'documents': sellerDocuments,
           },
-        );
+          'phone': phoneController.text.trim(),
+          'address': {
+            'region': selectedRegionName,
+            'province': selectedProvinceName,
+            'city': selectedMunicipalityName,
+            'barangay': selectedBarangayName,
+            'street': [
+              houseController.text.trim(),
+              streetController.text.trim(),
+            ].where((part) => part.isNotEmpty).join(' '),
+            'postal_code': postalCodeController.text.trim(),
+          },
+          'password': passwordController.text,
+          'date_of_birth': selectedDateOfBirth!
+              .toIso8601String()
+              .split('T')
+              .first,
+        };
+        if (backendEnabled) {
+          await ApiService.post('/auth/register', body: body);
+        } else {
+          DemoAccounts.register(body);
+        }
       } catch (error) {
         if (mounted) showMessage(error.toString());
         return;
@@ -920,7 +1000,9 @@ class _RegisterPageState extends State<RegisterPage> {
           ),
 
           title: Text(
-            '$selectedAccountType Registration Complete!',
+            backendEnabled
+                ? '$selectedAccountType Registration Complete!'
+                : '$selectedAccountType Demo Account Created!',
 
             textAlign: TextAlign.center,
 
@@ -928,8 +1010,10 @@ class _RegisterPageState extends State<RegisterPage> {
           ),
 
           content: Text(
-            selectedAccountType == 'Buyer'
-                ? 'Your buyer account is saved. Sign in with your email and password. Add a delivery address in your account before checking out.'
+            !backendEnabled
+                ? 'Your local demo account is ready. Sign in using your email and password. It will reset when the app restarts; no email was sent.'
+                : selectedAccountType == 'Buyer'
+                ? 'Your buyer account is saved. Sign in with your email and password. Review your delivery address before checking out.'
                 : 'Your seller account is ready. Sign in to add products and start selling.',
 
             textAlign: TextAlign.center,
@@ -991,7 +1075,7 @@ class _RegisterPageState extends State<RegisterPage> {
 
                     const SizedBox(height: 8),
 
-                    Row(
+                    Wrap(
                       children: [
                         Text(
                           'Already registered? ',
@@ -1414,8 +1498,11 @@ class _RegisterPageState extends State<RegisterPage> {
           controller: phoneController,
 
           keyboardType: TextInputType.phone,
-
-          decoration: inputDecoration('Mobile number'),
+          inputFormatters: MobileNumber.inputFormatters,
+          maxLength: MobileNumber.maxLength,
+          autofillHints: const [AutofillHints.telephoneNumberNational],
+          decoration: inputDecoration('Mobile number')
+              .copyWith(helperText: '11 digits, starting with 09'),
         ),
 
         const SizedBox(height: 14),
@@ -1666,6 +1753,7 @@ class _RegisterPageState extends State<RegisterPage> {
             });
 
             loadBarangays(code);
+            fillPostalCode();
           },
         ),
 
@@ -1696,6 +1784,36 @@ class _RegisterPageState extends State<RegisterPage> {
           },
         ),
 
+        const SizedBox(height: 14),
+
+        TextField(
+          key: const ValueKey('registration-postal-code'),
+          controller: postalCodeController,
+          enabled: selectedMunicipalityCode != null && !loadingPostalCode,
+          keyboardType: TextInputType.number,
+          autofillHints: const [AutofillHints.postalCode],
+          inputFormatters: [
+            FilteringTextInputFormatter.digitsOnly,
+            LengthLimitingTextInputFormatter(4),
+          ],
+          decoration: inputDecoration('Postal code*').copyWith(
+            labelText: 'Postal code*',
+            helperText:
+                postalCodeNotice ??
+                'Filled automatically when you select a city / municipality.',
+            helperMaxLines: 3,
+            suffixIcon: loadingPostalCode
+                ? const Padding(
+                    padding: EdgeInsets.all(14),
+                    child: SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  )
+                : const Icon(Icons.local_post_office_outlined),
+          ),
+        ),
         const SizedBox(height: 14),
 
         // STREET
@@ -1855,7 +1973,9 @@ class _RegisterPageState extends State<RegisterPage> {
         ),
         const SizedBox(height: 6),
         Text(
-          'Complete your shop details and select the required documents. Accepted files: JPG, PNG, or PDF.',
+          backendEnabled
+              ? 'Complete your shop details and select the required documents. Accepted files: JPG, PNG, or PDF.'
+              : 'Add your shop name and description to try the seller workspace.',
           style: TextStyle(color: lightText, fontSize: 12, height: 1.5),
         ),
         const SizedBox(height: 16),
@@ -1878,30 +1998,35 @@ class _RegisterPageState extends State<RegisterPage> {
             ),
           ),
         ),
-        const SizedBox(height: 16),
-        sellerDocumentField(
-          title: 'Government-issued ID *',
-          description:
-              'Select a clear image or PDF of your valid government-issued ID.',
-          documentType: 'id',
-          fileName: governmentIdFileName,
-        ),
-        sellerDocumentField(
-          title: 'Selfie with ID *',
-          description: 'Select a clear selfie showing you holding your ID.',
-          documentType: 'selfie',
-          fileName: selfieWithIdFileName,
-        ),
-        sellerDocumentField(
-          title: 'Business registration document *',
-          description: 'Required for seller verification. Select your business registration document as an image or PDF.',
-          documentType: 'business',
-          fileName: businessDocumentFileName,
-        ),
-        Text(
-          'Your documents are uploaded privately for seller approval when you create the account.',
-          style: TextStyle(color: lightText, fontSize: 11, height: 1.4),
-        ),
+        if (backendEnabled) ...[
+          const SizedBox(height: 16),
+          sellerDocumentField(
+            title: 'Government-issued ID *',
+            description: 'Select a clear image or PDF of your valid government-issued ID.',
+            documentType: 'id',
+            fileName: governmentIdFileName,
+          ),
+          sellerDocumentField(
+            title: 'Selfie with ID *',
+            description: 'Select a clear selfie showing you holding your ID.',
+            documentType: 'selfie',
+            fileName: selfieWithIdFileName,
+          ),
+          sellerDocumentField(
+            title: 'Business registration document *',
+            description: 'Required for seller verification. Select your business registration document as an image or PDF.',
+            documentType: 'business',
+            fileName: businessDocumentFileName,
+          ),
+          Text(
+            'Your documents are uploaded privately for seller approval when you create the account.',
+            style: TextStyle(color: lightText, fontSize: 11, height: 1.4),
+          ),
+        ] else
+          Text(
+            'Demo shop only. Identity documents and seller approval are not required or uploaded in demo mode.',
+            style: TextStyle(color: lightText, fontSize: 12),
+          ),
         const SizedBox(height: 8),
       ],
     );
@@ -1920,16 +2045,22 @@ class _RegisterPageState extends State<RegisterPage> {
         ),
       ),
       const SizedBox(height: 16),
-      EmailVerificationForm(
-        key: ValueKey(emailController.text.trim().toLowerCase()),
-        email: emailController.text.trim().toLowerCase(),
-        onVerified: (proof) {
-          setState(() {
-            verificationToken = proof;
-            verifiedEmail = emailController.text.trim().toLowerCase();
-          });
-        },
-      ),
+      if (backendEnabled)
+        EmailVerificationForm(
+          key: ValueKey(emailController.text.trim().toLowerCase()),
+          email: emailController.text.trim().toLowerCase(),
+          onVerified: (proof) {
+            setState(() {
+              verificationToken = proof;
+              verifiedEmail = emailController.text.trim().toLowerCase();
+            });
+          },
+        )
+      else
+        Text(
+          'Local demo registration. No verification email is sent. Your account and address stay in memory until the app restarts.',
+          style: TextStyle(color: lightText, height: 1.5),
+        ),
       const SizedBox(height: 20),
       if (selectedAccountType == 'Seller') buildSellerRequirements(),
     ],
@@ -2081,12 +2212,10 @@ class _PickerSheet extends StatelessWidget {
       expand: false,
 
       builder: (context, scrollController) {
-        return Container(
-          decoration: BoxDecoration(
-            color: _RegisterPageState.cream,
-
-            borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
-          ),
+        return Material(
+          color: _RegisterPageState.cream,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+          clipBehavior: Clip.antiAlias,
 
           child: Column(
             children: [

@@ -11,6 +11,7 @@ import 'seller_shop.dart';
 import 'seller_commerce.dart';
 import 'seller_tools_screen.dart';
 import '../screen/chat_screen.dart';
+import '../services/demo_accounts.dart';
 
 class SellerDashboardScreen extends StatefulWidget {
   const SellerDashboardScreen({super.key, this.connected = false});
@@ -48,6 +49,18 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
   @override
   void initState() {
     super.initState();
+    final account = DemoAccounts.current;
+    if (!widget.connected &&
+        account?.role == 'seller' &&
+        account!.shopName.isNotEmpty) {
+      shop.update(
+        owner: account.name,
+        name: account.shopName,
+        description: account.shopDescription,
+        email: account.email,
+        phone: account.phone,
+      );
+    }
     if (widget.connected) refresh();
   }
 
@@ -127,19 +140,6 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
                       ),
                     ),
                     const AppearanceButton(),
-                    IconButton(
-                      tooltip: 'Messages',
-                      icon: const Icon(Icons.chat_bubble_outline),
-                      onPressed: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => ChatInboxScreen(
-                            connected: widget.connected,
-                            seller: true,
-                          ),
-                        ),
-                      ),
-                    ),
                     if (widget.connected)
                       IconButton(
                         tooltip: 'Refresh shop',
@@ -197,6 +197,26 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
           );
           return Scaffold(
             key: scaffoldKey,
+            floatingActionButton: FloatingActionButton.extended(
+              heroTag: 'seller-chat',
+              tooltip: 'Open chat',
+              backgroundColor: LumearColors.action,
+              foregroundColor: LumearColors.onAction,
+              shape: const StadiumBorder(),
+              elevation: 3,
+              icon: const Icon(Icons.chat_bubble_outline_rounded),
+              label: const Text('Chat'),
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => ChatInboxScreen(
+                    connected: widget.connected,
+                    seller: true,
+                  ),
+                ),
+              ),
+            ),
+            floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
             drawer: wide
                 ? null
                 : Drawer(child: SafeArea(child: _sidebar(closeAfter: true))),

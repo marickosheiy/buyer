@@ -100,6 +100,17 @@ void main() {
     await tester.ensureVisible(fields.at(3));
     await tester.enterText(fields.at(3), 'maria@example.com');
     await tester.ensureVisible(fields.at(4));
+    await tester.enterText(fields.at(4), 'abc12345678901999');
+    expect(
+      tester.widget<TextFormField>(fields.at(4)).controller!.text,
+      '12345678901',
+    );
+    await tester.tap(find.text('Save changes'));
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Enter an 11-digit mobile number starting with 09.'),
+      findsOneWidget,
+    );
     await tester.enterText(fields.at(4), '09171234567');
     await tester.tap(find.text('Save changes'));
     await tester.pumpAndSettle();

@@ -13,6 +13,7 @@ import '../search_screen.dart';
 import '../services/wishlist_manager.dart';
 import '../widgets/banner_carousel.dart';
 import 'chat_screen.dart';
+import 'notifications_screen.dart';
 import 'orders_screen.dart';
 import 'profile_screen.dart';
 import 'voucher_screen.dart';
@@ -27,7 +28,6 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   int selectedIndex = 0;
-  bool chatOpened = false;
   @override
   void initState() {
     super.initState();
@@ -67,29 +67,38 @@ class _DashboardScreenState extends State<DashboardScreen> {
               Expanded(
                 child: IndexedStack(
                   index: selectedIndex,
-                  children: [
-                    const HomeScreen(),
-                    const SearchScreen(embedded: true),
-                    if (chatOpened)
-                      ChatInboxScreen(
-                        connected: widget.connected,
-                        active: selectedIndex == 2,
-                      )
-                    else
-                      const SizedBox.shrink(),
-                    const OrdersScreen(),
-                    const ProfileScreen(),
+                  children: const [
+                    HomeScreen(),
+                    SearchScreen(embedded: true),
+                    OrdersScreen(),
+                    ProfileScreen(),
                   ],
                 ),
               ),
             ],
           ),
         ),
+        floatingActionButton: FloatingActionButton.extended(
+          heroTag: 'buyer-chat',
+          tooltip: 'Open chat',
+          backgroundColor: LumearColors.action,
+          foregroundColor: LumearColors.onAction,
+          shape: const StadiumBorder(),
+          elevation: 3,
+          icon: const Icon(Icons.chat_bubble_outline_rounded),
+          label: const Text('Chat'),
+          onPressed: () => Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => ChatInboxScreen(connected: widget.connected),
+            ),
+          ),
+        ),
+        floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
         bottomNavigationBar: LumearDock(
           selectedIndex: selectedIndex,
           onSelected: (i) => setState(() {
             selectedIndex = i;
-            if (i == 2) chatOpened = true;
           }),
           destinations: const [
             NavigationDestination(
@@ -101,11 +110,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
               icon: Icon(Icons.grid_view_outlined),
               selectedIcon: Icon(Icons.grid_view_rounded),
               label: 'Browse',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.chat_bubble_outline),
-              selectedIcon: Icon(Icons.chat_bubble),
-              label: 'Inbox',
             ),
             NavigationDestination(
               icon: Icon(Icons.receipt_long_outlined),
@@ -187,19 +191,35 @@ class HomeScreen extends StatelessWidget {
                       ),
                       const AppearanceButton(),
                       IconButton(
-                        tooltip: 'Wishlist',
+                        tooltip: 'Notifications',
+                        style: IconButton.styleFrom(
+                          minimumSize: const Size(40, 48),
+                          padding: EdgeInsets.zero,
+                        ),
                         onPressed: () => Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (_) => const WishlistScreen(),
+                            builder: (_) => const NotificationsScreen(),
                           ),
                         ),
-                        icon: const Icon(Icons.favorite_border, size: 21),
+                        icon: Badge(
+                          isLabelVisible: BuyerData.instance.notifications.any(
+                            (n) => n['read'] == false,
+                          ),
+                          child: const Icon(
+                            Icons.notifications_none_rounded,
+                            size: 21,
+                          ),
+                        ),
                       ),
                       ListenableBuilder(
                         listenable: CartManager.instance,
                         builder: (_, _) => IconButton(
                           tooltip: 'Shopping bag',
+                          style: IconButton.styleFrom(
+                            minimumSize: const Size(40, 48),
+                            padding: EdgeInsets.zero,
+                          ),
                           onPressed: () => Navigator.push(
                             context,
                             MaterialPageRoute(
