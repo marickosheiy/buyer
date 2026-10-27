@@ -2,7 +2,8 @@ import '../design/lumear_theme.dart';
 import '../design/lumear_image.dart';
 
 import 'dart:math' as math;
-import 'dart:async';
+
+import '../services/top_notification.dart';
 
 import 'package:flutter/material.dart';
 
@@ -44,8 +45,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
     duration: const Duration(milliseconds: 850),
   );
   OverlayEntry? _flyingProduct;
-  OverlayEntry? _cartNotice;
-  Timer? _noticeTimer;
+  TopNotificationHandle? _cartNotice;
 
   @override
   void dispose() {
@@ -180,83 +180,26 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
   String money(double value) => '₱${value.toStringAsFixed(2)}';
 
   void dismissCartNotice() {
-    _noticeTimer?.cancel();
-    _cartNotice?.remove();
+    _cartNotice?.dismiss();
     _cartNotice = null;
   }
 
   void showCartNotice(String message, {bool success = false}) {
-    dismissCartNotice();
-    final top = MediaQuery.paddingOf(context).top + kToolbarHeight + 8;
-    _cartNotice = OverlayEntry(
-      builder: (_) => Positioned(
-        top: top,
-        left: 16,
-        right: 16,
-        child: SafeArea(
-          top: false,
-          bottom: false,
-          child: Align(
-            alignment: Alignment.topCenter,
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 560),
-              child: Semantics(
-                liveRegion: true,
-                child: Material(
-                  key: const ValueKey('cart-notice'),
-                  elevation: 6,
-                  color: darkMaroon,
-                  borderRadius: BorderRadius.circular(16),
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(14, 10, 6, 10),
-                    child: Row(
-                      children: [
-                        Icon(
-                          success
-                              ? Icons.check_circle_rounded
-                              : Icons.info_outline,
-                          color: LumearColors.surface,
-                          size: 22,
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            message,
-                            style: const TextStyle(
-                              color: LumearColors.ivory,
-                              fontSize: 13,
-                            ),
-                          ),
-                        ),
-                        if (success)
-                          TextButton(
-                            onPressed: openCart,
-                            style: TextButton.styleFrom(
-                              foregroundColor: LumearColors.ivory,
-                            ),
-                            child: const Text('View cart'),
-                          ),
-                        IconButton(
-                          onPressed: dismissCartNotice,
-                          tooltip: 'Dismiss notification',
-                          icon: const Icon(
-                            Icons.close,
-                            color: LumearColors.ivory,
-                            size: 18,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
+    _cartNotice = showTopNotification(
+      context,
+      SnackBar(
+        content: Text(message),
+        backgroundColor: darkMaroon,
+        action: success
+            ? SnackBarAction(
+                label: 'View cart',
+                textColor: LumearColors.ivory,
+                onPressed: openCart,
+              )
+            : null,
       ),
+      key: const ValueKey('cart-notice'),
     );
-    Overlay.of(context).insert(_cartNotice!);
-    _noticeTimer = Timer(const Duration(seconds: 4), dismissCartNotice);
   }
 
   void openCart() {

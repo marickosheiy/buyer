@@ -1,12 +1,15 @@
+import '../services/top_notification.dart';
 import 'product_media.dart';
 
 import 'package:flutter/material.dart';
 
-import '../product_categories.dart';
+import 'seller_product_editor_screen.dart';
 
 import '../design/components.dart';
 import '../design/lumear_theme.dart';
 import 'seller_commerce.dart';
+import 'seller_income_panel.dart';
+import '../services/marketplace_policy.dart';
 import 'payout_request_dialog.dart';
 
 class SellerToolsScreen extends StatefulWidget {
@@ -14,9 +17,11 @@ class SellerToolsScreen extends StatefulWidget {
     super.key,
     required this.commerce,
     required this.section,
+    this.shopName = 'Lumear Seller',
   });
   final SellerCommerce commerce;
   final String section;
+  final String shopName;
   @override
   State<SellerToolsScreen> createState() => _SellerToolsScreenState();
 }
@@ -35,8 +40,7 @@ class _SellerToolsScreenState extends State<SellerToolsScreen> {
       return true;
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(e.toString())));
+        showTopNotification(context, SnackBar(content: Text(e.toString())));
       }
       return false;
     } finally {
@@ -53,7 +57,7 @@ class _SellerToolsScreenState extends State<SellerToolsScreen> {
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
         children: [
           PageHeading(
-            widget.section == 'Earnings' ? 'Wallet & payouts' : widget.section,
+            widget.section == 'Earnings' ? 'Income & Earnings' : widget.section,
             eyebrow: widget.section == 'Products'
                 ? 'CATALOGUE'
                 : widget.section == 'Earnings'
@@ -73,8 +77,10 @@ class _SellerToolsScreenState extends State<SellerToolsScreen> {
           const SizedBox(height: 16),
           if (widget.section == 'Products') ...products(),
           if (widget.section == 'Orders') ...orders(),
-          if (widget.section == 'Earnings')
+          if (widget.section == 'Earnings') ...[
+            SellerIncomePanel(commerce: data, shopName: widget.shopName),
             ...(data.connected ? connectedEarnings() : earnings()),
+          ],
         ],
       ),
     ),
@@ -116,7 +122,7 @@ class _SellerToolsScreenState extends State<SellerToolsScreen> {
               switch (filter) {
                 'Active' => p.active,
                 'Hidden' => !p.active,
-                'Low stock' => p.stock <= 5,
+                'Low stock' => p.stock <= MarketplacePolicy.lowStockThreshold,
                 _ => true,
               },
         )
@@ -182,13 +188,15 @@ class _SellerToolsScreenState extends State<SellerToolsScreen> {
                           ],
                           Text('${sellerMoney(p.price)} · ${p.category}'),
                           if (p.subcategory.isNotEmpty) Text(p.subcategory),
+                          Text('Variety: ${p.variety}'),
                           const SizedBox(height: 8),
                           Text(
                             p.stock == 0
                                 ? 'Out of stock'
-                                : '${p.stock} available${p.stock <= 5 ? ' · Low stock' : ''}',
+                                : '${p.stock} available${p.stock <= MarketplacePolicy.lowStockThreshold ? ' · Low stock' : ''}',
                             style: TextStyle(
-                              color: p.stock <= 5
+                              color:
+                                  p.stock <= MarketplacePolicy.lowStockThreshold
                                   ? LumearColors.maroon
                                   : LumearColors.ink,
                             ),
@@ -200,7 +208,7 @@ class _SellerToolsScreenState extends State<SellerToolsScreen> {
                             ),
                             subtitle: Text(
                               !p.editable
-                                  ? 'Multiple variants · editing unavailable on mobile'
+                                  ? 'Separate products are required for each variety before this listing can be edited.'
                                   : data.connected
                                   ? 'Active listings appear in the buyer catalog'
                                   : 'Preview visibility',
@@ -217,6 +225,7 @@ class _SellerToolsScreenState extends State<SellerToolsScreen> {
                                         stock: p.stock,
                                         category: p.category,
                                         subcategory: p.subcategory,
+                                        variety: p.variety,
                                         description: p.description,
                                         active: active,
                                         media: p.media,
@@ -239,6 +248,7 @@ class _SellerToolsScreenState extends State<SellerToolsScreen> {
                   DataColumn(label: Text('PRODUCT')),
                   DataColumn(label: Text('MEDIA')),
                   DataColumn(label: Text('CATEGORY')),
+                  DataColumn(label: Text('VARIETY')),
                   DataColumn(label: Text('PRICE')),
                   DataColumn(label: Text('STOCK')),
                   DataColumn(label: Text('STATUS')),
@@ -279,6 +289,7 @@ class _SellerToolsScreenState extends State<SellerToolsScreen> {
                           ),
                         ),
                         DataCell(Text(p.category)),
+                        DataCell(SizedBox(width: 120, child: Text(p.variety))),
                         DataCell(Text(sellerMoney(p.price))),
                         DataCell(Text('${p.stock}')),
                         DataCell(
@@ -304,13 +315,9 @@ class _SellerToolsScreenState extends State<SellerToolsScreen> {
   }
 
   Future<void> editProduct([SellerProduct? product]) async {
-    final result = await showDialog<SellerProduct>(
-      context: context,
-      builder: (_) => _ProductEditor(
-        product: product,
-        categories: data.connected
-            ? data.categories
-            : data.products.map((p) => p.category).toSet().toList(),
+    final result = await Navigator.of(context).push<SellerProduct>(
+      MaterialPageRoute(
+        builder: (_) => SellerProductEditorScreen(product: product),
       ),
     );
     if (result != null && mounted) {
@@ -453,7 +460,8 @@ class _SellerToolsScreenState extends State<SellerToolsScreen> {
       builder: (_) => PayoutRequestDialog(commerce: data),
     );
     if (sent == true && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      showTopNotification(
+        context,
         const SnackBar(content: Text('Payout request sent for manual review.')),
       );
       await perform(() async {
@@ -593,6 +601,7 @@ class _SellerToolsScreenState extends State<SellerToolsScreen> {
       ),
     );
     return [
+      const SectionHeading('Wallet & payouts'),
       LayoutBuilder(
         builder: (context, c) {
           final a = balance(
@@ -680,52 +689,7 @@ class _SellerToolsScreenState extends State<SellerToolsScreen> {
   }
 
   List<Widget> earnings() => [
-    Container(
-      padding: const EdgeInsets.all(22),
-      decoration: BoxDecoration(
-        color: LumearColors.brandMaroon,
-        borderRadius: BorderRadius.circular(22),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'NET EARNINGS · ALL SAMPLE RECORDS',
-            style: TextStyle(color: Colors.white70, fontSize: 11),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            sellerMoney(data.netEarnings),
-            style: const TextStyle(
-              color: LumearColors.ivory,
-              fontSize: 32,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Completed orders after recorded fees and refunds.',
-            style: TextStyle(color: Colors.white70),
-          ),
-        ],
-      ),
-    ),
-    const SectionHeading('Sales breakdown'),
-    Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            _amount('Completed item sales', data.grossSales),
-            _amount('Recorded fees', -data.fees),
-            _amount('Recorded refunds', -data.refunds),
-            const Divider(),
-            _amount('Net earnings', data.netEarnings),
-          ],
-        ),
-      ),
-    ),
-    const SizedBox(height: 12),
+    const SectionHeading('Settlement overview'),
     Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -740,28 +704,10 @@ class _SellerToolsScreenState extends State<SellerToolsScreen> {
     ),
     const SizedBox(height: 12),
     const Text(
-      'Pending sales are not earned funds. Shipping is excluded from seller earnings. Sample fees illustrate deductions; marketplace rates are not configured.',
-      style: TextStyle(fontSize: 12, height: 1.5),
-    ),
-    const SectionHeading('Settlement history'),
-    for (final o in data.completed)
-      Card(
-        child: ListTile(
-          title: Text(o.id),
-          subtitle: Text(
-            o.paidOut ? 'Sample payout recorded' : 'Awaiting settlement',
-          ),
-          trailing: Text(sellerMoney(o.net)),
-          onTap: () => orderDetails(o),
-        ),
-      ),
-    const SizedBox(height: 16),
-    const Text(
-      'Withdrawals will be available after seller verification and payout services are connected. No money is transferred in this preview.',
+      'Settlement totals cover all completed sample orders. Withdrawals require connected payout services. No money is transferred in this preview.',
       style: TextStyle(fontSize: 12, height: 1.5),
     ),
   ];
-
   Widget _amount(String label, int value) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 6),
     child: Row(
@@ -820,269 +766,6 @@ class _Empty extends StatelessWidget {
           Text(subtitle, textAlign: TextAlign.center),
         ],
       ),
-    ),
-  );
-}
-
-class _ProductEditor extends StatefulWidget {
-  const _ProductEditor({this.product, this.categories = const []});
-  final SellerProduct? product;
-  final List<String> categories;
-  @override
-  State<_ProductEditor> createState() => _ProductEditorState();
-}
-
-class _ProductEditorState extends State<_ProductEditor> {
-  final form = GlobalKey<FormState>();
-  late final media = [...?widget.product?.media];
-  bool pickingMedia = false;
-  String? mediaError;
-
-  Future<void> addMedia(bool video) async {
-    setState(() {
-      pickingMedia = true;
-      mediaError = null;
-    });
-    try {
-      final selected = await ProductMedia.pick(video: video, existing: media);
-      if (mounted && selected != null) setState(() => media.add(selected));
-    } catch (error) {
-      if (mounted) {
-        setState(
-          () => mediaError = error is FormatException
-              ? error.message
-              : 'Unable to select media. Please try again.',
-        );
-      }
-    } finally {
-      if (mounted) setState(() => pickingMedia = false);
-    }
-  }
-
-  late final categories = ProductCategories.names;
-  late String? category =
-      widget.product == null ||
-          !categories.contains(
-            ProductCategories.canonical(widget.product!.category),
-          )
-      ? null
-      : ProductCategories.canonical(widget.product!.category);
-  late String? subcategory =
-      ProductCategories.children(category).contains(widget.product?.subcategory)
-      ? widget.product!.subcategory
-      : null;
-  late final fields = {
-    'name': TextEditingController(text: widget.product?.name),
-    'price': TextEditingController(
-      text: widget.product == null
-          ? ''
-          : (widget.product!.price / 100).toStringAsFixed(2),
-    ),
-    'stock': TextEditingController(
-      text: widget.product?.stock.toString() ?? '0',
-    ),
-    'description': TextEditingController(text: widget.product?.description),
-  };
-  @override
-  void dispose() {
-    for (final c in fields.values) {
-      c.dispose();
-    }
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) => LumearAppearance.build(
-    context,
-    () => AlertDialog(
-      title: Text(widget.product == null ? 'Add product' : 'Edit product'),
-      content: SizedBox(
-        width: 420,
-        child: SingleChildScrollView(
-          child: Form(
-            key: form,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    'Product photos and video',
-                    style: Theme.of(context).textTheme.titleSmall,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Up to 5 photos (5 MB each) and 1 video (20 MB). JPG, PNG, WEBP or MP4.',
-                ),
-                const SizedBox(height: 8),
-                ProductMediaGallery(
-                  media: media,
-                  onRemove: pickingMedia
-                      ? null
-                      : (index) => setState(() => media.removeAt(index)),
-                ),
-                Wrap(
-                  spacing: 8,
-                  children: [
-                    OutlinedButton.icon(
-                      onPressed:
-                          pickingMedia ||
-                              media.where((m) => !m.isVideo).length >= 5
-                          ? null
-                          : () => addMedia(false),
-                      icon: const Icon(Icons.add_photo_alternate_outlined),
-                      label: const Text('Add photo'),
-                    ),
-                    OutlinedButton.icon(
-                      onPressed: pickingMedia || media.any((m) => m.isVideo)
-                          ? null
-                          : () => addMedia(true),
-                      icon: const Icon(Icons.video_library_outlined),
-                      label: const Text('Add video'),
-                    ),
-                  ],
-                ),
-                if (pickingMedia) const LinearProgressIndicator(),
-                if (mediaError != null)
-                  Text(
-                    mediaError!,
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.error,
-                    ),
-                  ),
-                const SizedBox(height: 16),
-                for (final entry in {
-                  'name': 'Product name',
-                  'price': 'Price (₱)',
-                  'stock': 'Available stock',
-                  'category': 'Category',
-                  'subcategory': 'Subcategory',
-                  'description': 'Description (optional)',
-                }.entries)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 14),
-                    child: entry.key == 'category'
-                        ? DropdownButtonFormField<String>(
-                            initialValue: category,
-                            isExpanded: true,
-                            decoration: InputDecoration(
-                              labelText: 'Category',
-                              hintText: 'Choose a category',
-                              helperText: categories.isEmpty
-                                  ? 'No categories available. Refresh and try again.'
-                                  : null,
-                            ),
-                            items: [
-                              for (final option in categories)
-                                DropdownMenuItem(
-                                  value: option,
-                                  child: Text(option),
-                                ),
-                            ],
-                            onChanged: categories.isEmpty
-                                ? null
-                                : (value) => setState(() {
-                                    category = value;
-                                    subcategory = null;
-                                  }),
-                            validator: (value) =>
-                                value == null ? 'Choose a category.' : null,
-                          )
-                        : entry.key == 'subcategory'
-                        ? DropdownButtonFormField<String>(
-                            key: ValueKey(category),
-                            initialValue: subcategory,
-                            isExpanded: true,
-                            decoration: const InputDecoration(
-                              labelText: 'Subcategory',
-                              hintText: 'Choose a subcategory',
-                            ),
-                            items: [
-                              for (final child in ProductCategories.children(
-                                category,
-                              ))
-                                DropdownMenuItem(
-                                  value: child,
-                                  child: Text(
-                                    child,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                            ],
-                            onChanged: category == null
-                                ? null
-                                : (value) =>
-                                      setState(() => subcategory = value),
-                            validator: (value) =>
-                                value == null ? 'Choose a subcategory.' : null,
-                          )
-                        : TextFormField(
-                            controller: fields[entry.key],
-                            decoration: InputDecoration(labelText: entry.value),
-                            maxLength: entry.key == 'description' ? 1000 : 100,
-                            maxLines: entry.key == 'description' ? 3 : 1,
-                            keyboardType: entry.key == 'price'
-                                ? const TextInputType.numberWithOptions(
-                                    decimal: true,
-                                  )
-                                : entry.key == 'stock'
-                                ? TextInputType.number
-                                : TextInputType.text,
-                            validator: (value) {
-                              final v = value?.trim() ?? '';
-                              if (entry.key == 'description') return null;
-                              if (v.isEmpty) return 'This field is required.';
-                              if (entry.key == 'price' &&
-                                  (!RegExp(r'^\d{1,7}(\.\d{1,2})?$')
-                                          .hasMatch(v) ||
-                                      (double.tryParse(v) ?? 0) <= 0)) {
-                                return 'Enter a positive price with up to 2 decimals.';
-                              }
-                              if (entry.key == 'stock' &&
-                                  (!RegExp(r'^\d{1,6}$').hasMatch(v))) {
-                                return 'Enter a whole number from 0 to 999999.';
-                              }
-                              return null;
-                            },
-                          ),
-                  ),
-              ],
-            ),
-          ),
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          onPressed: pickingMedia
-              ? null
-              : () {
-                  if (!form.currentState!.validate()) return;
-                  Navigator.pop(
-                    context,
-                    SellerProduct(
-                      id:
-                          widget.product?.id ??
-                          'SP-${DateTime.now().microsecondsSinceEpoch}',
-                      name: fields['name']!.text.trim(),
-                      price: (double.parse(fields['price']!.text.trim()) * 100)
-                          .round(),
-                      stock: int.parse(fields['stock']!.text.trim()),
-                      category: category!,
-                      subcategory: subcategory!,
-                      description: fields['description']!.text.trim(),
-                      active: widget.product?.active ?? true,
-                      media: List.unmodifiable(media),
-                    ),
-                  );
-                },
-          child: const Text('Save product'),
-        ),
-      ],
     ),
   );
 }

@@ -18,12 +18,18 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
+      expect(find.text('Store categories', skipOffstage: false), findsNothing);
       await tester.tap(find.text('Products').last);
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
       await tester.tap(find.widgetWithText(FilledButton, 'Add product'));
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(
+        tester.getSize(find.byKey(const ValueKey('product-editor-page'))),
+        const Size(320, 740),
+      );
       await tester.tap(find.text('Save product'));
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
@@ -34,22 +40,29 @@ void main() {
       await tester.enterText(fields.at(2), '7');
       final category = find.byType(DropdownButtonFormField<String>).first;
       await tester.ensureVisible(category);
+      await tester.pumpAndSettle();
       await tester.tap(category);
       await tester.pumpAndSettle();
       await tester.tap(find.text('Home and Garden').last);
       await tester.pumpAndSettle();
       final subcategory = find.byType(DropdownButtonFormField<String>).last;
       await tester.ensureVisible(subcategory);
+      await tester.pumpAndSettle();
       await tester.tap(subcategory);
       await tester.pumpAndSettle();
       await tester.tap(find.text('Furniture & Decor').last);
       await tester.pumpAndSettle();
+      final variety = find.widgetWithText(TextFormField, 'Variety');
+      await tester.ensureVisible(variety);
+      await tester.pumpAndSettle();
+      await tester.enterText(variety, 'Natural / Small');
       await tester.tap(find.text('Save product'));
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
       expect(find.text('Test basket'), findsOneWidget);
       expect(find.text('₱125.50 · Home and Garden'), findsOneWidget);
       expect(find.text('Furniture & Decor'), findsWidgets);
+      expect(find.text('Variety: Natural / Small'), findsOneWidget);
       await tester.tap(find.text('Orders').last);
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
@@ -63,8 +76,8 @@ void main() {
       await tester.tap(find.text('Earnings').last);
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
-      expect(find.text('₱1187.50'), findsOneWidget);
-      final breakdown = find.text('Net earnings');
+      expect(find.text('₱1,125.00'), findsOneWidget);
+      final breakdown = find.text('Income Transaction History');
       await tester.scrollUntilVisible(
         breakdown,
         150,
@@ -93,9 +106,13 @@ void main() {
     await tester.tap(find.text('Profile'));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
+    await tester.ensureVisible(find.text('Edit shop profile'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Edit shop profile'));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.byType(AppBar), findsOneWidget);
     await tester.tap(find.text('Save changes'));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);

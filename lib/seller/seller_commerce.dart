@@ -3,6 +3,7 @@ import 'product_media.dart';
 import 'package:flutter/foundation.dart';
 
 import '../services/api_service.dart';
+import '../services/marketplace_policy.dart';
 
 String sellerMoney(int cents) => '₱${(cents / 100).toStringAsFixed(2)}';
 
@@ -34,6 +35,7 @@ class SellerProduct {
     required this.stock,
     required this.category,
     this.subcategory = '',
+    this.variety = 'Default',
     this.description = '',
     this.active = true,
     this.editable = true,
@@ -42,6 +44,7 @@ class SellerProduct {
   final String id;
   final String name, category, description;
   final String subcategory;
+  final String variety;
   final int price, stock;
   final bool active;
   final bool editable;
@@ -59,17 +62,20 @@ class SellerOrder {
     required this.address,
     required this.placedAt,
     required this.status,
-    this.fee = 0,
+    int? fee,
     this.refund = 0,
-    this.shipping = 5000,
+    this.shipping = MarketplacePolicy.shippingCentavos,
     this.paidOut = false,
     this.itemsSubtotal,
     this.paymentMethod = 'COD',
     this.cancellable = true,
-  });
+    this.completedAt,
+  }) : _recordedFee = fee;
   final String id, buyer, productId, productName, address;
-  final int quantity, unitPrice, fee, refund, shipping;
+  final int quantity, unitPrice, refund, shipping;
+  final int? _recordedFee;
   final DateTime placedAt;
+  final DateTime? completedAt;
   final bool paidOut;
   final String paymentMethod;
   final bool cancellable;
@@ -77,7 +83,9 @@ class SellerOrder {
   SellerOrderStatus status;
   String? cancellationReason;
   int get subtotal => itemsSubtotal ?? unitPrice * quantity;
+  int get fee => _recordedFee ?? MarketplacePolicy.commissionFor(subtotal);
   int get net => subtotal - fee - refund;
+  DateTime get incomeDate => completedAt ?? placedAt;
 }
 
 /// Seller state backed by the API when connected; sample records otherwise.
@@ -155,7 +163,7 @@ class SellerCommerce extends ChangeNotifier {
         2,
         45000,
         SellerOrderStatus.completed,
-        4500,
+        9000,
         false,
       ),
       (
@@ -166,7 +174,7 @@ class SellerCommerce extends ChangeNotifier {
         1,
         35000,
         SellerOrderStatus.completed,
-        1750,
+        3500,
         true,
       ),
     ].indexed) {
@@ -185,6 +193,9 @@ class SellerCommerce extends ChangeNotifier {
           status: status,
           fee: fee,
           paidOut: paid,
+          completedAt: status == SellerOrderStatus.completed
+              ? now.subtract(Duration(days: entry.$1))
+              : null,
         ),
       );
     }
@@ -201,7 +212,6 @@ class SellerCommerce extends ChangeNotifier {
   }
 
   Map<String, dynamic> earnings = {};
-  List<String> categories = [];
 
   Future<Map<String, dynamic>> load() async {
     final result = Map<String, dynamic>.from(
@@ -210,6 +220,7 @@ class SellerCommerce extends ChangeNotifier {
     if (_disposed) return {};
     _products.clear();
     for (final p in result['products']) {
+      final variants = p['variants'] as List? ?? [];
       _products.add(
         SellerProduct(
           id: p['id'],
@@ -220,7 +231,13 @@ class SellerCommerce extends ChangeNotifier {
           subcategory: p['subcategory'] as String? ?? '',
           description: p['description'],
           active: p['active'],
-          editable: (p['variants'] as List).length == 1,
+          variety:
+              (p['variant_label'] as String?) ??
+              (variants.length == 1
+                  ? variants.first['label'] as String?
+                  : null) ??
+              'Default',
+          editable: variants.length <= 1,
           media: ProductMedia.fromProduct(p),
         ),
       );
@@ -245,6 +262,8 @@ class SellerCommerce extends ChangeNotifier {
             (o['date'] as num).toInt() * 1000,
           ),
           fee: o['commission'],
+          refund: (o['refund'] as num?)?.toInt() ?? 0,
+          completedAt: _optionalDate(o['completed_at']),
           paymentMethod: o['payment_method'],
           cancellable: ['pending', 'accepted'].contains(o['raw_status']),
           shipping: o['shipping'],
@@ -260,9 +279,6 @@ class SellerCommerce extends ChangeNotifier {
       );
     }
     earnings = Map<String, dynamic>.from(result['earnings']);
-    categories = (result['categories'] as List)
-        .map((c) => c['name'] as String)
-        .toList();
     notifyListeners();
     return Map<String, dynamic>.from(result['shop']);
   }
@@ -293,17 +309,28 @@ class SellerCommerce extends ChangeNotifier {
             o.status != SellerOrderStatus.cancelled,
       )
       .fold(0, (sum, o) => sum + o.subtotal);
-  int get lowStock => _products.where((p) => p.stock <= 5).length;
+  List<SellerProduct> get lowStockProducts => _products
+      .where((p) => p.stock <= MarketplacePolicy.lowStockThreshold)
+      .toList(growable: false);
+  int get lowStock => lowStockProducts.length;
   int get toPack =>
       _orders.where((o) => o.status == SellerOrderStatus.toPack).length;
 
   Future<void> saveProduct(SellerProduct product) async {
+    final existing = _products.where((p) => p.id == product.id).firstOrNull;
+    if (!product.editable || existing?.editable == false) {
+      throw StateError(
+        'Each product must have one variety. Create separate products for existing varieties before editing this listing.',
+      );
+    }
     if (product.name.trim().isEmpty ||
         product.price <= 0 ||
         product.stock < 0 ||
-        product.category.trim().isEmpty) {
+        product.category.trim().isEmpty ||
+        product.variety.trim().isEmpty ||
+        product.variety.trim().length > 100) {
       throw ArgumentError(
-        'Enter a name, category, positive price and valid stock.',
+        'Enter a name, category, one variety (up to 100 characters), positive price and valid stock.',
       );
     }
     if (connected) {
@@ -313,6 +340,7 @@ class SellerCommerce extends ChangeNotifier {
         'stock': product.stock,
         'category': product.category,
         'subcategory': product.subcategory,
+        'variant_label': product.variety.trim(),
         'description': product.description,
         'active': product.active,
         'media': product.media.map((m) => m.toJson()).toList(),
@@ -373,6 +401,8 @@ class SellerCommerce extends ChangeNotifier {
         stock: p.stock + order.quantity,
         category: p.category,
         subcategory: p.subcategory,
+        variety: p.variety,
+        editable: p.editable,
         description: p.description,
         active: p.active,
         media: p.media,
@@ -380,4 +410,14 @@ class SellerCommerce extends ChangeNotifier {
     }
     notifyListeners();
   }
+}
+
+DateTime? _optionalDate(dynamic value) {
+  if (value is num) {
+    return DateTime.fromMillisecondsSinceEpoch(
+      value.toInt() * 1000,
+      isUtc: true,
+    );
+  }
+  return value is String ? DateTime.tryParse(value) : null;
 }

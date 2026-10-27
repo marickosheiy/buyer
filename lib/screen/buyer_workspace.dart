@@ -1,3 +1,5 @@
+import '../services/top_notification.dart';
+import '../services/marketplace_policy.dart';
 import '../design/lumear_theme.dart';
 
 import 'dart:convert';
@@ -106,8 +108,7 @@ class _BuyerWorkspaceState extends State<BuyerWorkspace> {
       return true;
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(e.toString())));
+        showTopNotification(context, SnackBar(content: Text(e.toString())));
       }
       return false;
     } finally {
@@ -666,7 +667,8 @@ class _BuyerWorkspaceState extends State<BuyerWorkspace> {
       return;
     }
     if (!supports('checkout')) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      showTopNotification(
+        context,
         const SnackBar(
           content: Text('Checkout is awaiting a configured shipping rate.'),
         ),
@@ -694,6 +696,7 @@ class _BuyerWorkspaceState extends State<BuyerWorkspace> {
           '/checkout/quote',
           body: {'address_id': addressId, 'vouchers': selectedCodes},
         );
+        MarketplacePolicy.validateShippingQuote(Map<String, dynamic>.from(q));
         if (!sheet.mounted) return;
         update(() {
           quote = Map<String, dynamic>.from(q);

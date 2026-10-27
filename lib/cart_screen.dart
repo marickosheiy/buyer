@@ -1,3 +1,4 @@
+import 'services/top_notification.dart';
 import 'design/lumear_theme.dart';
 import 'design/lumear_image.dart';
 
@@ -407,14 +408,13 @@ class CartScreen extends StatelessWidget {
         return;
       }
       if (context.mounted) {
-        ScaffoldMessenger.of(context)
-          ..hideCurrentSnackBar()
-          ..showSnackBar(
-            const SnackBar(
-              content: Text('Item removed from your cart.'),
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
+        showTopNotification(
+          context,
+          const SnackBar(
+            content: Text('Item removed from your cart.'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
       }
     }
   }

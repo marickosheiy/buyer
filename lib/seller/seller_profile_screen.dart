@@ -1,10 +1,13 @@
+import '../services/top_notification.dart';
+
 import 'package:flutter/material.dart';
 
 import '../design/components.dart';
 import '../design/lumear_theme.dart';
 import '../login_page.dart';
 import '../services/api_service.dart';
-import '../services/mobile_number.dart';
+import 'seller_shop_editor_screen.dart';
+import 'seller_shop_images.dart';
 import 'seller_shop.dart';
 
 class SellerProfileScreen extends StatefulWidget {
@@ -30,31 +33,12 @@ class _SellerProfileScreenState extends State<SellerProfileScreen> {
   }
 
   Future<void> edit() async {
-    final result = await showDialog<Map<String, String>>(
-      context: context,
-      builder: (_) => _ShopEditor(shop: shop),
+    final saved = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => SellerShopEditorScreen(shop: shop)),
     );
-    if (result == null || !mounted) return;
-    if (shop.connected) {
-      try {
-        await ApiService.patch('/seller/shop', body: result);
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context)
-              .showSnackBar(SnackBar(content: Text(e.toString())));
-        }
-        return;
-      }
-      if (!mounted) return;
-    }
-    shop.update(
-      owner: result['owner']!,
-      name: result['name']!,
-      description: result['description']!,
-      email: result['email']!,
-      phone: result['phone']!,
-    );
-    ScaffoldMessenger.of(context).showSnackBar(
+    if (saved != true || !mounted) return;
+    showTopNotification(
+      context,
       SnackBar(
         content: Text(
           shop.connected
@@ -116,6 +100,10 @@ class _SellerProfileScreenState extends State<SellerProfileScreen> {
         body: ListView(
           padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
           children: [
+            SellerShopImages(
+              profileImage: shop.profileImage,
+              coverImage: shop.coverImage,
+            ),
             PageHeading(
               'My profile',
               eyebrow: 'SELLER OPERATOR',
@@ -135,15 +123,26 @@ class _SellerProfileScreenState extends State<SellerProfileScreen> {
                             CircleAvatar(
                               radius: 26,
                               backgroundColor: LumearColors.action,
-                              child: Text(
-                                shop.owner.isEmpty ? 'L' : shop.owner[0],
-                                style: const TextStyle(
-                                  color: LumearColors.ivory,
-                                  fontFamily: 'serif',
-                                  fontFamilyFallback: ['Roboto'],
-                                  fontSize: 26,
-                                ),
-                              ),
+                              child: shop.profileImage != null
+                                  ? ClipOval(
+                                      child: SizedBox(
+                                        width: 52,
+                                        height: 52,
+                                        child: ShopPhoto(
+                                          photo: shop.profileImage,
+                                          profile: true,
+                                        ),
+                                      ),
+                                    )
+                                  : Text(
+                                      shop.owner.isEmpty ? 'L' : shop.owner[0],
+                                      style: const TextStyle(
+                                        color: LumearColors.ivory,
+                                        fontFamily: 'serif',
+                                        fontFamilyFallback: ['Roboto'],
+                                        fontSize: 26,
+                                      ),
+                                    ),
                             ),
                             const SizedBox(width: 14),
                             Expanded(
@@ -341,127 +340,6 @@ class _SellerProfileScreenState extends State<SellerProfileScreen> {
           ],
         ),
       ),
-    ),
-  );
-}
-
-class _ShopEditor extends StatefulWidget {
-  const _ShopEditor({required this.shop});
-  final SellerShop shop;
-  @override
-  State<_ShopEditor> createState() => _ShopEditorState();
-}
-
-class _ShopEditorState extends State<_ShopEditor> {
-  final formKey = GlobalKey<FormState>();
-  late final controllers = <String, TextEditingController>{
-    'owner': TextEditingController(text: widget.shop.owner),
-    'name': TextEditingController(text: widget.shop.name),
-    'description': TextEditingController(text: widget.shop.description),
-    'email': TextEditingController(text: widget.shop.email),
-    'phone': TextEditingController(
-      text: MobileNumber.forEditing(widget.shop.phone),
-    ),
-  };
-
-  @override
-  void dispose() {
-    for (final controller in controllers.values) {
-      controller.dispose();
-    }
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) => LumearAppearance.build(
-    context,
-    () => AlertDialog(
-      title: const Text('Edit shop profile'),
-      content: SizedBox(
-        width: 420,
-        child: SingleChildScrollView(
-          child: Form(
-            key: formKey,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                for (final field in const {
-                  'owner': 'Seller name',
-                  'name': 'Shop name',
-                  'description': 'Shop story',
-                  'email': 'Email address',
-                  'phone': 'Mobile number',
-                }.entries)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 14),
-                    child: TextFormField(
-                      controller: controllers[field.key],
-                      readOnly:
-                          widget.shop.connected &&
-                          (field.key == 'email' || field.key == 'phone'),
-                      decoration: InputDecoration(
-                        labelText: field.value,
-                        errorMaxLines: 2,
-                        helperText: field.key == 'owner' || field.key == 'name'
-                            ? 'Required'
-                            : 'Optional',
-                      ),
-                      maxLength: field.key == 'description'
-                          ? 300
-                          : field.key == 'phone'
-                          ? MobileNumber.maxLength
-                          : 100,
-                      maxLines: field.key == 'description' ? 3 : 1,
-                      inputFormatters: field.key == 'phone'
-                          ? MobileNumber.inputFormatters
-                          : null,
-                      keyboardType: field.key == 'email'
-                          ? TextInputType.emailAddress
-                          : field.key == 'phone'
-                          ? TextInputType.phone
-                          : TextInputType.text,
-                      validator: (value) {
-                        final text = value?.trim() ?? '';
-                        if ((field.key == 'owner' || field.key == 'name') &&
-                            text.isEmpty) {
-                          return 'Please enter your ${field.value.toLowerCase()}.';
-                        }
-                        if (field.key == 'email' &&
-                            text.isNotEmpty &&
-                            !RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$')
-                                .hasMatch(text)) {
-                          return 'Enter a valid email address.';
-                        }
-                        if (field.key == 'phone' &&
-                            text.isNotEmpty &&
-                            !MobileNumber.isValid(text)) {
-                          return MobileNumber.error;
-                        }
-                        return null;
-                      },
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          onPressed: () {
-            if (formKey.currentState!.validate()) {
-              Navigator.pop(context, {
-                for (final e in controllers.entries) e.key: e.value.text.trim(),
-              });
-            }
-          },
-          child: const Text('Save changes'),
-        ),
-      ],
     ),
   );
 }

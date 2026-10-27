@@ -8,11 +8,14 @@ import '../design/brand_art.dart';
 import '../design/lumear_theme.dart';
 import 'seller_profile_screen.dart';
 import 'seller_shop.dart';
+import 'seller_shop_images.dart';
 import 'seller_commerce.dart';
 import 'seller_tools_screen.dart';
 import '../screen/chat_screen.dart';
 import '../services/demo_accounts.dart';
-import '../product_categories.dart';
+import '../services/marketplace_policy.dart';
+import '../services/top_notification.dart';
+import 'seller_stock_alerts_screen.dart';
 
 class SellerDashboardScreen extends StatefulWidget {
   const SellerDashboardScreen({super.key, this.connected = false});
@@ -28,6 +31,9 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
   String? error;
   int selectedIndex = 0;
   final scaffoldKey = GlobalKey<ScaffoldState>();
+  final Map<String, int> _previousStock = {};
+  TopNotificationHandle? _stockNotice;
+  bool _stockCheckScheduled = false;
   static const destinations = [
     NavigationDestination(
       icon: Icon(Icons.dashboard_outlined),
@@ -50,6 +56,8 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
   @override
   void initState() {
     super.initState();
+    commerce.addListener(_queueStockCheck);
+    _queueStockCheck();
     final account = DemoAccounts.current;
     if (!widget.connected &&
         account?.role == 'seller' &&
@@ -65,6 +73,50 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
     if (widget.connected) refresh();
   }
 
+  void _queueStockCheck() {
+    if (_stockCheckScheduled) return;
+    _stockCheckScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _stockCheckScheduled = false;
+      if (!mounted) return;
+      final alerts = commerce.lowStockProducts.where((product) {
+        final previous = _previousStock[product.id];
+        return previous == null || product.stock < previous;
+      }).toList();
+      _previousStock
+        ..clear()
+        ..addEntries(commerce.products.map((p) => MapEntry(p.id, p.stock)));
+      if (alerts.isEmpty) return;
+      final names = alerts
+          .take(2)
+          .map((p) => '${p.name}: ${p.stock} left')
+          .join('; ');
+      _stockNotice = showTopNotification(
+        context,
+        SnackBar(
+          content: Text(
+            'Low stock (5 or less) · $names${alerts.length > 2 ? '; +${alerts.length - 2} more' : ''}',
+          ),
+          action: SnackBarAction(
+            label: 'View stock',
+            onPressed: openStockAlerts,
+          ),
+        ),
+      );
+    });
+  }
+
+  Future<void> openStockAlerts() async {
+    _stockNotice?.dismiss();
+    final manage = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => SellerStockAlertsScreen(commerce: commerce),
+      ),
+    );
+    if (mounted && manage == true) select(2);
+  }
+
   Future<void> refresh() async {
     setState(() {
       loading = true;
@@ -74,6 +126,7 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
       final p = await commerce.load();
       if (!mounted) return;
       shop.status = p['status'] ?? '';
+      shop.readImages(p);
       shop.update(
         owner: p['owner'],
         name: p['name'],
@@ -90,6 +143,8 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
 
   @override
   void dispose() {
+    commerce.removeListener(_queueStockCheck);
+    _stockNotice?.dismiss();
     shop.dispose();
     commerce.dispose();
     super.dispose();
@@ -141,6 +196,15 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
                       ),
                     ),
                     const AppearanceButton(),
+                    IconButton(
+                      tooltip: 'Stock notifications',
+                      onPressed: openStockAlerts,
+                      icon: Badge(
+                        isLabelVisible: commerce.lowStock > 0,
+                        label: Text('${commerce.lowStock}'),
+                        child: const Icon(Icons.notifications_outlined),
+                      ),
+                    ),
                     if (widget.connected)
                       IconButton(
                         tooltip: 'Refresh shop',
@@ -153,15 +217,26 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
                       icon: CircleAvatar(
                         radius: 16,
                         backgroundColor: LumearColors.action,
-                        child: Text(
-                          shop.owner.isEmpty
-                              ? 'L'
-                              : shop.owner[0].toUpperCase(),
-                          style: const TextStyle(
-                            color: LumearColors.ivory,
-                            fontSize: 13,
-                          ),
-                        ),
+                        child: shop.profileImage != null
+                            ? ClipOval(
+                                child: SizedBox(
+                                  width: 32,
+                                  height: 32,
+                                  child: ShopPhoto(
+                                    photo: shop.profileImage,
+                                    profile: true,
+                                  ),
+                                ),
+                              )
+                            : Text(
+                                shop.owner.isEmpty
+                                    ? 'L'
+                                    : shop.owner[0].toUpperCase(),
+                                style: const TextStyle(
+                                  color: LumearColors.ivory,
+                                  fontSize: 13,
+                                ),
+                              ),
                       ),
                     ),
                   ],
@@ -183,14 +258,17 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
                     _dashboard(),
                     SellerToolsScreen(commerce: commerce, section: 'Orders'),
                     SellerToolsScreen(commerce: commerce, section: 'Products'),
-                    SellerToolsScreen(commerce: commerce, section: 'Earnings'),
+                    SellerToolsScreen(
+                      commerce: commerce,
+                      section: 'Earnings',
+                      shopName: shop.name.isEmpty ? 'Lumear Seller' : shop.name,
+                    ),
                     SellerProfileScreen(
                       shop: shop,
                       showBottomNavigation: false,
                     ),
                     _inventory(),
                     _analytics(),
-                    _categories(),
                   ],
                 ),
               ),
@@ -314,7 +392,6 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
           for (final item in [
             (0, Icons.dashboard_outlined, 'Dashboard'),
             (2, Icons.inventory_2_outlined, 'Products'),
-            (7, Icons.category_outlined, 'Store categories'),
             (5, Icons.stacked_bar_chart, 'Inventory'),
             (1, Icons.local_shipping_outlined, 'Order management'),
             (6, Icons.show_chart, 'Analytics'),
@@ -656,7 +733,7 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
               'Your products have healthy stock levels.',
               style: TextStyle(color: LumearColors.beige),
             ),
-          for (final p in commerce.products.where((p) => p.stock <= 5).take(4))
+          for (final p in commerce.lowStockProducts.take(4))
             Padding(
               padding: const EdgeInsets.only(bottom: 16),
               child: Row(
@@ -700,7 +777,9 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
           child: ListTile(
             leading: Icon(
               Icons.inventory_2_outlined,
-              color: p.stock <= 5 ? LumearColors.maroon : LumearColors.gold,
+              color: p.stock <= MarketplacePolicy.lowStockThreshold
+                  ? LumearColors.maroon
+                  : LumearColors.gold,
             ),
             title: Text(p.name),
             subtitle: Text(p.category),
@@ -741,35 +820,6 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
       ),
     ],
   );
-  Widget _categories() {
-    final names = ProductCategories.names;
-    return ListView(
-      padding: const EdgeInsets.all(20),
-      children: [
-        const PageHeading(
-          'Store categories',
-          eyebrow: 'CATALOGUE',
-          subtitle: 'Choose from 8 categories and their subcategories.',
-        ),
-        for (final name in names)
-          Card(
-            child: ExpansionTile(
-              leading: const Icon(Icons.category_outlined),
-              title: Text(name),
-              subtitle: Text(
-                '${commerce.products.where((p) => ProductCategories.canonical(p.category) == name).length} products',
-              ),
-              children: [
-                for (final child in ProductCategories.children(name))
-                  ListTile(title: Text(child), onTap: () => select(2)),
-              ],
-            ),
-          ),
-        if (names.isEmpty)
-          const Text('Categories appear when you add products.'),
-      ],
-    );
-  }
 }
 
 class _RevenuePainter extends CustomPainter {

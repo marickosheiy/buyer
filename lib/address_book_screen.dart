@@ -1,3 +1,4 @@
+import 'services/top_notification.dart';
 import 'design/lumear_theme.dart';
 
 import 'dart:convert';
@@ -45,7 +46,8 @@ class _AddressBookScreenState extends State<AddressBookScreen> {
 
   void useSelectedAddress() {
     if (selectedId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      showTopNotification(
+        context,
         SnackBar(
           content: Text('Please select an address first.'),
           backgroundColor: LumearColors.action,
@@ -842,8 +844,10 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
     final phone = phoneController.text.trim();
     final houseStreet = houseStreetController.text.trim();
     if (!MobileNumber.isValid(phone)) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text(MobileNumber.error)));
+      showTopNotification(
+        context,
+        const SnackBar(content: Text(MobileNumber.error)),
+      );
       return;
     }
 
@@ -854,7 +858,8 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
         selectedProvince == null ||
         selectedCity == null ||
         selectedBarangay == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      showTopNotification(
+        context,
         SnackBar(
           content: Text('Please complete all address fields.'),
           backgroundColor: LumearColors.action,
@@ -875,7 +880,8 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
         provinceName == null ||
         cityName == null ||
         barangayName == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      showTopNotification(
+        context,
         SnackBar(
           content: Text('Please select a valid address.'),
           backgroundColor: LumearColors.action,
@@ -886,7 +892,8 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
 
     if (AddressManager.instance.connected &&
         !RegExp(r'^\d{4}$').hasMatch(postalCodeController.text.trim())) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      showTopNotification(
+        context,
         const SnackBar(content: Text('Enter a four-digit postal code.')),
       );
       return;
@@ -929,8 +936,7 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(e.toString())));
+        showTopNotification(context, SnackBar(content: Text(e.toString())));
       }
     } finally {
       if (mounted) setState(() => saving = false);

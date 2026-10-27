@@ -16,6 +16,7 @@ import 'package:flutter_application_1/design/lumear_theme.dart';
 import 'package:flutter_application_1/screen/dashboard_screen.dart';
 import 'package:flutter_application_1/seller/seller_dashboard_screen.dart';
 import 'package:flutter_application_1/services/buyer_data.dart';
+import 'package:flutter_application_1/login_page.dart';
 
 Widget themed(Widget home) => ListenableBuilder(
   listenable: LumearAppearance.instance,
@@ -80,6 +81,58 @@ void main() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(LumearAppearance.channel, null);
   });
+  testWidgets(
+    'Demo account selection keeps readable text and seller sign-in retains dark mode',
+    (tester) async {
+      tester.view.physicalSize = const Size(360, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await tester.pumpWidget(themed(const LoginPage(useBackend: false)));
+      await tester.pumpAndSettle();
+      for (final mode in [ThemeMode.light, ThemeMode.dark]) {
+        await LumearAppearance.instance.setMode(mode);
+        await tester.pumpAndSettle();
+        for (final label in ['Buyer', 'Seller · local preview']) {
+          final option = find.widgetWithText(ChoiceChip, label);
+          await tester.ensureVisible(option);
+          await tester.pumpAndSettle();
+          await tester.tap(option);
+          await tester.pumpAndSettle();
+          final chip = tester.widget<ChoiceChip>(option);
+          expect(chip.selected, isTrue);
+          final background = chip.selectedColor!.computeLuminance();
+          final foreground = (chip.label as Text).style!.color!
+              .computeLuminance();
+          final contrast = background > foreground
+              ? (background + .05) / (foreground + .05)
+              : (foreground + .05) / (background + .05);
+          expect(
+            contrast,
+            greaterThanOrEqualTo(4.5),
+            reason: '$label should remain readable in ${mode.name} mode',
+          );
+          expect(LumearAppearance.instance.mode, mode);
+          if (mode == ThemeMode.dark) {
+            expect((chip.label as Text).style!.color, LumearColors.charcoal);
+          }
+        }
+      }
+      final signIn = find.widgetWithText(FilledButton, 'Sign in');
+      await tester.ensureVisible(signIn);
+      await tester.pumpAndSettle();
+      await tester.tap(signIn);
+      await tester.pumpAndSettle();
+      expect(find.byType(SellerDashboardScreen), findsOneWidget);
+      expect(LumearAppearance.instance.mode, ThemeMode.dark);
+      expect(
+        Theme.of(tester.element(find.byType(SellerDashboardScreen))).brightness,
+        Brightness.dark,
+      );
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
   testWidgets('Buyer appearance changes live and persists the preference', (
     tester,
   ) async {
@@ -195,6 +248,12 @@ void main() {
           );
           await tester.pumpAndSettle();
           await preview(tester, 'seller-earnings-dark-tablet');
+          await tester.scrollUntilVisible(
+            find.widgetWithText(FilledButton, 'Request payout'),
+            250,
+            scrollable: find.byType(Scrollable).first,
+          );
+          await tester.pumpAndSettle();
           await tester.tap(find.widgetWithText(FilledButton, 'Request payout'));
           await tester.pumpAndSettle();
           await tester.enterText(find.byType(TextField).last, '0');

@@ -1,3 +1,5 @@
+import 'top_notification.dart';
+
 import 'package:flutter/material.dart';
 
 Future<bool> runBuyerAction(
@@ -9,8 +11,7 @@ Future<bool> runBuyerAction(
     return true;
   } catch (e) {
     if (context.mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(e.toString())));
+      showTopNotification(context, SnackBar(content: Text(e.toString())));
     }
     return false;
   }

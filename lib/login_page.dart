@@ -594,7 +594,9 @@ class _LoginPageState extends State<LoginPage> {
                   style: TextStyle(
                     fontSize: 11,
                     color: emailController.text == account[1]
-                        ? Colors.white
+                        ? (LumearColors.isDark
+                              ? LumearColors.charcoal
+                              : LumearColors.ivory)
                         : LumearColors.dark,
                   ),
                 ),

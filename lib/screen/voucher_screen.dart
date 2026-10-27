@@ -1,3 +1,4 @@
+import '../services/top_notification.dart';
 import '../design/lumear_theme.dart';
 
 import 'package:flutter/material.dart';
@@ -197,9 +198,8 @@ class _VoucherScreenState extends State<VoucherScreen> {
                                           setState(
                                             () => claimed.add(voucher.id),
                                           );
-                                          ScaffoldMessenger.of(
+                                          showTopNotification(
                                             context,
-                                          ).showSnackBar(
                                             SnackBar(
                                               content: Text(
                                                 '${voucher.id} claimed for demo!',

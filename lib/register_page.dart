@@ -1,3 +1,4 @@
+import 'services/top_notification.dart';
 import 'design/lumear_theme.dart';
 
 import 'dart:convert';
@@ -676,9 +677,8 @@ class _RegisterPageState extends State<RegisterPage> {
 
     VoidCallback? onAction,
   }) {
-    ScaffoldMessenger.of(context).hideCurrentSnackBar();
-
-    ScaffoldMessenger.of(context).showSnackBar(
+    showTopNotification(
+      context,
       SnackBar(
         behavior: SnackBarBehavior.floating,
 

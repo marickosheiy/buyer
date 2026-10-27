@@ -8,6 +8,12 @@ changed. No server is installed or started, and no SQL is automatically executed
 
 ## Manual import
 
+Each product now has one variety only. `ProductVariants.product_id` is unique,
+so each listing can have at most one variant row; the API must create the single
+row with the product. Additional sizes/colors should be separate listings.
+Existing multi-variant databases need an explicit integration migration that
+preserves order/cart references; this standalone handoff is not that migration.
+
 Use MySQL 8.0.16 or newer, preferably the team's supported MySQL 8.4 release.
 Open the SQL file in MySQL Workbench, review it, then execute it on the intended
 new development database server. The account must have database/table creation
@@ -91,8 +97,16 @@ schema and agree on ownership of delivery events.
   subtotal has a PHP 100.00 commission, leaving PHP 900.00 before refunds or any
   seller-funded promotion deductions. Voucher funding must be agreed separately;
   a discount does not change this commission base. The API returns the generated
-  value as `commission`. The Flutter demo's sample fee amounts are unchanged;
-  this handoff is not connected to the app.
+  value as `commission`. The Flutter demo now uses the same 10% rate;
+  this handoff is not connected to a live database.
+- **Fixed base shipping is PHP 50.00 per shop order** (5000 centavos), including
+  merchandise subtotals above PHP 1,000. Orders default to 5000 and enforce this
+  base fee with `ck_order_shipping`. Shipping is excluded from commissions and
+  seller income. Voucher discounts remain separate; they never change the
+  commission base. Multi-shop checkouts create one shipping charge per shop order.
+- The seller client flags inventory at **5 units or fewer**, including zero.
+  It alerts on entry and on decreasing stock after a workspace refresh. A shared
+  backend must persist seller-scoped notifications for background delivery.
 - Store media URLs and file names, not base64 uploads, in ProductMedia. The backend
   validates/stores uploaded files and returns stable URLs. Enforce the app's five
   image/one video limits and file-size/type limits before storing attachments.

@@ -51,7 +51,7 @@ void main() {
           );
           await tester.tap(find.text('Earnings').last);
           await tester.pumpAndSettle();
-          expect(find.text('Wallet & payouts'), findsOneWidget);
+          expect(find.text('Income & Earnings'), findsOneWidget);
           final balance = find.text('₱12.34');
           await tester.scrollUntilVisible(
             balance,

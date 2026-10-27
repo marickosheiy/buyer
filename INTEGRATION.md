@@ -4,6 +4,63 @@ This repository contains the Flutter buyer/seller client. The combined project
 will own the backend and database used by buyer, seller, and rider apps.
 No live API URL or database credentials are included here.
 
+## Marketplace rules and income reporting
+
+Seller shop editing now opens a full-page route. Profile and background pictures
+accept JPG/PNG/WEBP up to 5 MB each and preview before saving. Cancelling discards
+unsaved changes. In connected mode, `PATCH /seller/shop` includes only changed
+image fields: `profile_image` / `cover_image`, with `{name, type: "image", data}`
+(base64 bytes), or explicit `null` to remove an image. The backend must validate,
+store and remove these uploads and return them from `GET /seller/workspace` in
+`shop.profile_image` / `shop.cover_image` as media objects with stable `url` fields
+(plain `profile_image_url` / `cover_image_url` strings are also read). No server
+or upload storage is bundled. Demo photos live only for the current session.
+Save failures keep the editor and draft open for retry. Checkout confirmation
+is now a full-page receipt; Done or Back returns to the cart without reopening
+the completed checkout.
+
+- Low stock means **5 units or fewer**, including zero and inactive listings.
+  Sellers receive an in-app top notice when entering the seller workspace and
+  when a refreshed product falls to or decreases within that range. Repeating
+  the same refresh does not repeat the alert. The bell opens the current stock
+  notification list. These notifications are session-local; push/background
+  notifications need server-side stock events and seller-scoped delivery.
+- Shipping is a fixed **PHP 50.00 (5000 centavos) per shop order**, with no
+  automatic free-shipping threshold. A multi-shop checkout has one charge per
+  shop order. Both connected checkout screens validate each quote's store
+  `shipping` field against 5000 and preserve server totals and idempotency.
+  The API must enforce this rule when quoting and placing orders; changing
+  only Flutter cannot change a deployed backend's prices.
+- Platform commission is **10% of merchandise subtotal, excluding shipping**,
+  rounded half-up to the nearest centavo per order. The seller gets 90% before
+  refunds or separately agreed promotion deductions. Sample records now follow
+  this rule. Connected orders preserve recorded `commission` values; reports
+  identify historical exceptions rather than rewriting accounting history.
+- Income & Earnings filters completed orders by **This Week** (Monday onward),
+  **This Month**, **Year to Date** (January 1 through today), **All Time**, or an
+  inclusive **Custom date range**, in Philippine time (UTC+8). Custom ranges
+  support past years and include the entire end date. The selected dates appear
+  on the screen and in PDF/print reports; custom PDF filenames include both dates.
+  The screen, saved
+  PDF and print job use the same immutable transaction snapshot. Pending,
+  delivered-but-uncompleted and cancelled orders are excluded; shipping is
+  excluded and recorded `refund` centavos are deducted separately.
+- `GET /seller/workspace` must return the complete seller order history for
+  these reports (not a truncated recent-orders page), including `completed_at`
+  as Unix seconds or an ISO-8601 timestamp with an explicit offset. If completion
+  timestamps are missing, reports explicitly disclose use of placement dates.
+  Return `refund` as integer centavos (defaults to zero if absent). Wallet and
+  payout aggregates remain server-owned and separate from filtered sales.
+- PDF export opens the native save dialog; Print opens the platform print
+  dialog. The `pdf` and `printing` packages and bundled Apache-licensed Roboto
+  fonts generate multipage reports offline with peso glyphs. A native rebuild
+  is needed after adding the printing plugin; hot reload alone is insufficient.
+
+Top notifications use a root overlay below the safe top/toolbar area. Their
+message body and background allow taps through; only explicit actions intercept
+taps. New notices replace old ones, expire automatically, and clear on route
+changes or overlay disposal. Existing forms retain their Retry actions.
+
 Google login uses the proposed `POST /auth/google` token exchange. See
 [Google sign-in setup](GOOGLE_SIGN_IN.md) for OAuth client registration,
 build configuration, server verification, and the response contract.
@@ -55,6 +112,20 @@ and buyer-visible media responses before enabling this feature across accounts.
 The current picker allows five photos up to 5 MB each and one MP4 up to 20 MB.
 
 ## Product categories and subcategories
+
+Seller categories appear only as dropdowns in Add/Edit Product, which opens a full-page route with
+scrollable fields and persistent Save/Cancel actions. The existing photo/video
+upload limits, category dropdowns and one-variety validation are retained.
+Each product has one variety,
+one price and one stock count. `POST /seller/products` and product PATCH requests
+include a single `variant_label` string (defaults to `Default` for an ordinary
+listing). The shared backend must create/update exactly one ProductVariants row
+per product transactionally; other sizes/colors should be separate products.
+The standalone SQL handoff enforces at most one variant with UNIQUE(product_id).
+This is not an automatic migration. Existing multi-variant records remain
+read-only in the seller client until the backend safely splits them into
+separate listings, preserving cart and order references. They are never silently
+flattened or deleted. Buyer-side compatibility for existing orders is retained.
 
 `lib/product_categories.dart` is the shared buyer/seller hierarchy: 8 main
 categories and 48 subcategories, using the supplied names verbatim. Browse supports

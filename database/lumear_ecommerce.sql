@@ -118,6 +118,8 @@ CREATE TABLE ProductVariants (
     stock_quantity INT UNSIGNED NOT NULL DEFAULT 0,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
     UNIQUE (variant_id, product_id),
+    -- One variety per listing; the backend creates it with the product.
+    UNIQUE (product_id),
     FOREIGN KEY (product_id) REFERENCES Products(product_id)
 ) ENGINE=InnoDB;
 
@@ -214,7 +216,8 @@ CREATE TABLE Orders (
     address_postal_code VARCHAR(20),
     payment_method ENUM('COD', 'GCash', 'Card', 'Bank transfer') NOT NULL DEFAULT 'COD',
     subtotal_centavos BIGINT UNSIGNED NOT NULL,
-    shipping_centavos BIGINT UNSIGNED NOT NULL DEFAULT 0,
+    -- Fixed base shipping fee: PHP 50.00 per shop order.
+    shipping_centavos BIGINT UNSIGNED NOT NULL DEFAULT 5000,
     discount_centavos BIGINT UNSIGNED NOT NULL DEFAULT 0,
     total_centavos BIGINT UNSIGNED NOT NULL,
     -- Lumear commission: 10% of merchandise subtotal BEFORE voucher discounts.
@@ -232,6 +235,7 @@ CREATE TABLE Orders (
         subtotal_centavos + shipping_centavos = total_centavos + discount_centavos
     ),
     CONSTRAINT ck_order_commission CHECK (commission_centavos <= subtotal_centavos),
+    CONSTRAINT ck_order_shipping CHECK (shipping_centavos = 5000),
     FOREIGN KEY (buyer_user_id) REFERENCES Users(user_id),
     FOREIGN KEY (shop_id) REFERENCES Shops(shop_id)
 ) ENGINE=InnoDB;
