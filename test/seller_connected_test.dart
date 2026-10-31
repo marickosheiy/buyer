@@ -69,6 +69,27 @@ void main() {
           expect(tester.takeException(), isNull);
         },
         () => MockClient((request) async {
+          if (request.url.path == '/api/seller/analytics') {
+            return http.Response(
+              jsonEncode({
+                'current': <String, num>{},
+                'previous': <String, num>{},
+                'daily': [],
+                'products': [],
+                'customers': {
+                  'new': 0,
+                  'returning': 0,
+                  'repeat': 0,
+                  'locations': [],
+                },
+                'promotions': [],
+                'operations': <String, num>{},
+                'notifications': [],
+                'returns': [],
+              }),
+              200,
+            );
+          }
           expect(request.url.path, '/api/seller/workspace');
           return http.Response(
             jsonEncode({

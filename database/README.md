@@ -40,6 +40,16 @@ checked structurally but has not been imported or runtime-tested on MySQL.
 | Alerts | Notifications, DeviceTokens |
 | Buyer/seller chat | ChatThreads, ChatMessages |
 | Optional AI history | AssistantConversations, AssistantMessages |
+| Seller traffic and product analytics | ShopVisits, ProductEvents |
+| Flash sales and promotion attribution | FlashSales, FlashSaleItems, PromotionEvents, FlashSalePurchases |
+
+The seller dashboard now includes period comparisons, sales/product/customer and
+promotion analytics, live order/return snapshots, notifications and PDF export.
+See [SELLER_ANALYTICS.md](SELLER_ANALYTICS.md) for the exact API response, metric
+definitions, ownership checks and instrumentation requirements. The schema adds
+six analytics/promotion tables and optional packing/delivery deadlines on Orders.
+This remains a fresh-database handoff; existing installations need a reviewed
+migration. No live backend or database has been connected by these changes.
 
 There is one buyer/seller role per account and one shop per seller. The backend
 must enforce these roles; a foreign key alone does not prove that an account is
@@ -193,7 +203,7 @@ MySQL references: [CREATE TABLE](https://dev.mysql.com/doc/refman/8.4/en/create-
 
 ## Updated category hierarchy (October 26, 2026)
 
-The fresh-database script now creates 30 tables and seeds the eight main categories
+The fresh-database script now creates 36 tables and seeds the eight main categories
 and 48 subcategories below. Products must reference a valid subcategory within
 their selected main category. The existing 10% commission calculation is unchanged.
 

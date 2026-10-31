@@ -1,6 +1,3 @@
-import 'dart:math' as math;
-
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../design/components.dart';
@@ -16,6 +13,7 @@ import '../services/demo_accounts.dart';
 import '../services/marketplace_policy.dart';
 import '../services/top_notification.dart';
 import 'seller_stock_alerts_screen.dart';
+import 'seller_analytics_panel.dart';
 
 class SellerDashboardScreen extends StatefulWidget {
   const SellerDashboardScreen({super.key, this.connected = false});
@@ -31,6 +29,7 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
   String? error;
   int selectedIndex = 0;
   final scaffoldKey = GlobalKey<ScaffoldState>();
+  final notificationKey = GlobalKey();
   final Map<String, int> _previousStock = {};
   TopNotificationHandle? _stockNotice;
   bool _stockCheckScheduled = false;
@@ -197,13 +196,20 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
                     ),
                     const AppearanceButton(),
                     IconButton(
-                      tooltip: 'Stock notifications',
-                      onPressed: openStockAlerts,
-                      icon: Badge(
-                        isLabelVisible: commerce.lowStock > 0,
-                        label: Text('${commerce.lowStock}'),
-                        child: const Icon(Icons.notifications_outlined),
-                      ),
+                      tooltip: 'Seller notifications',
+                      onPressed: () {
+                        select(0);
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          final target = notificationKey.currentContext;
+                          if (target != null) {
+                            Scrollable.ensureVisible(
+                              target,
+                              duration: const Duration(milliseconds: 300),
+                            );
+                          }
+                        });
+                      },
+                      icon: const Icon(Icons.notifications_outlined),
                     ),
                     if (widget.connected)
                       IconButton(
@@ -268,7 +274,6 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
                       showBottomNavigation: false,
                     ),
                     _inventory(),
-                    _analytics(),
                   ],
                 ),
               ),
@@ -394,7 +399,7 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
             (2, Icons.inventory_2_outlined, 'Products'),
             (5, Icons.stacked_bar_chart, 'Inventory'),
             (1, Icons.local_shipping_outlined, 'Order management'),
-            (6, Icons.show_chart, 'Analytics'),
+            (0, Icons.show_chart, 'Analytics'),
             (3, Icons.account_balance_wallet_outlined, 'Earnings'),
             (4, Icons.person_outline, 'My profile'),
           ])
@@ -426,22 +431,6 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
       ),
     ),
   );
-  List<double> get recentRevenue {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    return List.generate(7, (i) {
-      final day = today.subtract(Duration(days: 6 - i));
-      return commerce.completed
-          .where(
-            (o) =>
-                o.placedAt.year == day.year &&
-                o.placedAt.month == day.month &&
-                o.placedAt.day == day.day,
-          )
-          .fold<double>(0, (sum, o) => sum + o.subtotal / 100);
-    });
-  }
-
   Widget _dashboard() {
     final hour = DateTime.now().hour;
     final greeting = hour < 12
@@ -475,54 +464,11 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
               ),
             ),
           ),
-        LayoutBuilder(
-          builder: (context, c) {
-            final w = c.maxWidth >= 700 ? (c.maxWidth - 24) / 3 : c.maxWidth;
-            return Wrap(
-              spacing: 12,
-              runSpacing: 12,
-              children: [
-                _metric(
-                  'GROSS SALES',
-                  sellerMoney(commerce.grossSales),
-                  'Completed seller sales',
-                  Icons.payments_outlined,
-                  w,
-                ),
-                _metric(
-                  'ORDERS',
-                  '${commerce.orders.length}',
-                  'Customer purchases',
-                  Icons.shopping_bag_outlined,
-                  w,
-                ),
-                _metric(
-                  'PRODUCTS',
-                  '${commerce.products.length}',
-                  'Items in your shop',
-                  Icons.inventory_2_outlined,
-                  w,
-                ),
-              ],
-            );
-          },
-        ),
-        const SizedBox(height: 20),
-        LayoutBuilder(
-          builder: (context, c) {
-            final chart = _revenueCard();
-            final stock = _stockCard();
-            return c.maxWidth >= 800
-                ? Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(flex: 2, child: chart),
-                      const SizedBox(width: 16),
-                      Expanded(child: stock),
-                    ],
-                  )
-                : Column(children: [chart, const SizedBox(height: 4), stock]);
-          },
+        SellerAnalyticsPanel(
+          commerce: commerce,
+          shopName: shop.name.isEmpty ? 'Lumear Seller' : shop.name,
+          openSection: select,
+          notificationKey: notificationKey,
         ),
         const SectionHeading('Needs your attention'),
         Card(
@@ -567,203 +513,6 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
     );
   }
 
-  Widget _metric(
-    String title,
-    String value,
-    String note,
-    IconData icon,
-    double width,
-  ) => SizedBox(
-    width: width,
-    child: Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    title,
-                    style: TextStyle(
-                      color: LumearColors.light,
-                      fontSize: 10,
-                      letterSpacing: 1.4,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-                Icon(icon, color: LumearColors.gold, size: 22),
-              ],
-            ),
-            const SizedBox(height: 14),
-            Text(
-              value,
-              style: TextStyle(
-                fontFamily: 'serif',
-                fontFamilyFallback: const ['Roboto'],
-                fontSize: 28,
-                fontWeight: FontWeight.bold,
-                color: LumearColors.dark,
-              ),
-            ),
-            const SizedBox(height: 7),
-            Text(
-              note,
-              style: TextStyle(color: LumearColors.light, fontSize: 11),
-            ),
-          ],
-        ),
-      ),
-    ),
-  );
-  Widget _revenueCard() => Card(
-    child: Padding(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'SHOP PERFORMANCE',
-            style: TextStyle(
-              fontSize: 10,
-              color: LumearColors.light,
-              letterSpacing: 1.5,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Revenue overview',
-            style: TextStyle(
-              fontFamily: 'serif',
-              fontFamilyFallback: const ['Roboto'],
-              fontWeight: FontWeight.bold,
-              fontSize: 25,
-              color: LumearColors.dark,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Completed sales by order date · Last 7 days',
-            style: TextStyle(fontSize: 11, color: LumearColors.light),
-          ),
-          const SizedBox(height: 20),
-          Text(
-            sellerMoney(
-              (recentRevenue.fold<double>(0, (a, b) => a + b) * 100).round(),
-            ),
-            style: const TextStyle(
-              fontSize: 25,
-              fontFamily: 'serif',
-              fontFamilyFallback: ['Roboto'],
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 16),
-          if (recentRevenue.every((v) => v == 0))
-            const Padding(
-              padding: EdgeInsets.only(bottom: 12),
-              child: Text('No completed sales in this period.'),
-            ),
-          Semantics(
-            label:
-                'Revenue for the last seven days: ${recentRevenue.map((v) => sellerMoney((v * 100).round())).join(', ')}',
-            child: SizedBox(
-              height: 142,
-              width: double.infinity,
-              child: CustomPaint(
-                painter: _RevenuePainter(
-                  recentRevenue,
-                  LumearColors.maroon,
-                  LumearColors.border,
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: List.generate(7, (i) {
-              final d = DateTime.now().subtract(Duration(days: 6 - i));
-              return Expanded(
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Text(
-                    '${d.month}/${d.day}',
-                    style: TextStyle(fontSize: 10, color: LumearColors.light),
-                  ),
-                ),
-              );
-            }),
-          ),
-        ],
-      ),
-    ),
-  );
-  Widget _stockCard() => Card(
-    color: LumearColors.brandMaroon,
-    child: Padding(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'INVENTORY PULSE',
-            style: TextStyle(
-              color: LumearColors.beige,
-              fontSize: 10,
-              letterSpacing: 1.5,
-            ),
-          ),
-          const SizedBox(height: 10),
-          const Text(
-            'Keep an eye on stock.',
-            style: TextStyle(
-              fontFamily: 'serif',
-              fontFamilyFallback: ['Roboto'],
-              color: LumearColors.ivory,
-              fontSize: 25,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 24),
-          if (commerce.lowStock == 0)
-            const Text(
-              'Your products have healthy stock levels.',
-              style: TextStyle(color: LumearColors.beige),
-            ),
-          for (final p in commerce.lowStockProducts.take(4))
-            Padding(
-              padding: const EdgeInsets.only(bottom: 16),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      p.name,
-                      style: const TextStyle(color: LumearColors.ivory),
-                    ),
-                  ),
-                  Text(
-                    '${p.stock} left',
-                    style: const TextStyle(
-                      color: LumearColors.beige,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          const SizedBox(height: 24),
-          TextButton(
-            onPressed: () => select(5),
-            style: TextButton.styleFrom(foregroundColor: LumearColors.ivory),
-            child: const Text('Open inventory →'),
-          ),
-        ],
-      ),
-    ),
-  );
   Widget _inventory() => ListView(
     padding: const EdgeInsets.all(20),
     children: [
@@ -790,89 +539,4 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
       if (commerce.products.isEmpty) const Text('No inventory yet.'),
     ],
   );
-  Widget _analytics() => ListView(
-    padding: const EdgeInsets.all(20),
-    children: [
-      const PageHeading(
-        'Analytics',
-        eyebrow: 'SHOP PERFORMANCE',
-        subtitle: 'Completed sales and order activity from your shop.',
-      ),
-      _revenueCard(),
-      const SectionHeading('Sales summary'),
-      Card(
-        child: Column(
-          children: [
-            ListTile(
-              title: const Text('Gross sales'),
-              trailing: Text(sellerMoney(commerce.grossSales)),
-            ),
-            ListTile(
-              title: const Text('Commission'),
-              trailing: Text(sellerMoney(commerce.fees)),
-            ),
-            ListTile(
-              title: const Text('Net sales'),
-              trailing: Text(sellerMoney(commerce.netEarnings)),
-            ),
-          ],
-        ),
-      ),
-    ],
-  );
-}
-
-class _RevenuePainter extends CustomPainter {
-  _RevenuePainter(this.values, this.color, this.line);
-  final List<double> values;
-  final Color color, line;
-  @override
-  void paint(Canvas canvas, Size size) {
-    for (var i = 0; i < 4; i++) {
-      final y = size.height * i / 3;
-      canvas.drawLine(
-        Offset(0, y),
-        Offset(size.width, y),
-        Paint()
-          ..color = line
-          ..strokeWidth = .7,
-      );
-    }
-    final maxValue = math.max(1.0, values.reduce(math.max));
-    final path = Path();
-    for (var i = 0; i < values.length; i++) {
-      final x = size.width * i / (values.length - 1);
-      final y = size.height - 8 - (values[i] / maxValue) * (size.height - 16);
-      if (i == 0) {
-        path.moveTo(x, y);
-      } else {
-        path.lineTo(x, y);
-      }
-    }
-    final fill = Path.from(path)
-      ..lineTo(size.width, size.height)
-      ..lineTo(0, size.height)
-      ..close();
-    canvas.drawPath(
-      fill,
-      Paint()
-        ..shader = LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [color.withValues(alpha: .25), color.withValues(alpha: 0)],
-        ).createShader(Offset.zero & size),
-    );
-    canvas.drawPath(
-      path,
-      Paint()
-        ..color = color
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2.5
-        ..strokeJoin = StrokeJoin.round,
-    );
-  }
-
-  @override
-  bool shouldRepaint(_RevenuePainter old) =>
-      old.color != color || old.line != line || !listEquals(old.values, values);
 }

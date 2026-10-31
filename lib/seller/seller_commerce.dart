@@ -70,6 +70,7 @@ class SellerOrder {
     this.paymentMethod = 'COD',
     this.cancellable = true,
     this.completedAt,
+    this.rawStatus,
   }) : _recordedFee = fee;
   final String id, buyer, productId, productName, address;
   final int quantity, unitPrice, refund, shipping;
@@ -78,9 +79,10 @@ class SellerOrder {
   final DateTime? completedAt;
   final bool paidOut;
   final String paymentMethod;
-  final bool cancellable;
+  bool cancellable;
   final int? itemsSubtotal;
   SellerOrderStatus status;
+  String? rawStatus;
   String? cancellationReason;
   int get subtotal => itemsSubtotal ?? unitPrice * quantity;
   int get fee => _recordedFee ?? MarketplacePolicy.commissionFor(subtotal);
@@ -212,6 +214,8 @@ class SellerCommerce extends ChangeNotifier {
   }
 
   Map<String, dynamic> earnings = {};
+  final Set<String> pausedPromotions = {};
+  final Set<String> readNotifications = {};
 
   Future<Map<String, dynamic>> load() async {
     final result = Map<String, dynamic>.from(
@@ -275,6 +279,7 @@ class SellerCommerce extends ChangeNotifier {
             'cancelled' => SellerOrderStatus.cancelled,
             _ => SellerOrderStatus.inTransit,
           },
+          rawStatus: o['raw_status'] as String?,
         ),
       );
     }
@@ -372,7 +377,47 @@ class SellerCommerce extends ChangeNotifier {
       throw StateError('Only orders waiting to be packed can be prepared.');
     }
     order.status = SellerOrderStatus.ready;
+    order.rawStatus = 'ready_to_ship';
+    order.cancellable = false;
     notifyListeners();
+  }
+
+  Future<void> markPacked(SellerOrder order) async {
+    if (!_orders.contains(order) ||
+        order.status != SellerOrderStatus.toPack ||
+        order.rawStatus == 'packed') {
+      throw StateError('Only new orders can be marked packed.');
+    }
+    if (connected) {
+      await ApiService.post(
+        '/seller/orders/${Uri.encodeComponent(order.id)}/pack',
+        body: {},
+      );
+      await load();
+    } else {
+      order.rawStatus = 'packed';
+      order.cancellable = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> markShipped(SellerOrder order) async {
+    if (!_orders.contains(order) ||
+        (order.status != SellerOrderStatus.ready &&
+            order.rawStatus != 'packed')) {
+      throw StateError('Pack the order before marking it shipped.');
+    }
+    if (connected) {
+      await ApiService.post(
+        '/seller/orders/${Uri.encodeComponent(order.id)}/ship',
+        body: {},
+      );
+      await load();
+    } else {
+      order.rawStatus = 'in_transit';
+      order.status = SellerOrderStatus.inTransit;
+      notifyListeners();
+    }
   }
 
   Future<void> cancel(SellerOrder order, String reason) async {
@@ -386,10 +431,12 @@ class SellerCommerce extends ChangeNotifier {
     }
     if (!_orders.contains(order) ||
         order.status != SellerOrderStatus.toPack ||
+        !order.cancellable ||
         reason.trim().isEmpty) {
       throw StateError('Only unpacked orders can be cancelled, with a reason.');
     }
     order.status = SellerOrderStatus.cancelled;
+    order.rawStatus = 'cancelled';
     order.cancellationReason = reason.trim();
     final index = _products.indexWhere((p) => p.id == order.productId);
     if (index >= 0) {

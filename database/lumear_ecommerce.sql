@@ -177,6 +177,7 @@ CREATE TABLE Vouchers (
     expires_at DATETIME NOT NULL,
     usage_limit INT UNSIGNED NOT NULL,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    UNIQUE (voucher_id, shop_id),
     CONSTRAINT ck_voucher_dates CHECK (expires_at > starts_at),
     CONSTRAINT ck_voucher_value CHECK (
         (discount_type = 'fixed' AND fixed_centavos IS NOT NULL
@@ -225,6 +226,8 @@ CREATE TABLE Orders (
     commission_centavos BIGINT UNSIGNED GENERATED ALWAYS AS
         (ROUND(subtotal_centavos * 0.10, 0)) STORED,
     cancellation_reason TEXT,
+    pack_due_at DATETIME,
+    delivery_due_at DATETIME,
     placed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     UNIQUE (order_id, shop_id),
@@ -251,6 +254,7 @@ CREATE TABLE OrderItems (
     quantity INT UNSIGNED NOT NULL,
     unit_price_centavos BIGINT UNSIGNED NOT NULL,
     line_total_centavos BIGINT UNSIGNED NOT NULL,
+    UNIQUE (order_item_id, product_id),
     CONSTRAINT ck_order_item_quantity CHECK (quantity > 0),
     CONSTRAINT ck_order_item_total CHECK (line_total_centavos = quantity * unit_price_centavos),
     FOREIGN KEY (order_id, shop_id) REFERENCES Orders(order_id, shop_id),
@@ -358,6 +362,117 @@ CREATE TABLE Notifications (
     FOREIGN KEY (user_id) REFERENCES Users(user_id),
     FOREIGN KEY (order_id) REFERENCES Orders(order_id)
 ) ENGINE=InnoDB;
+
+-- Seller analytics sources. Event IDs are idempotency keys issued/validated by
+-- the backend. Never derive purchase, redemption or revenue from client events.
+CREATE TABLE ShopVisits (
+    visit_id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+    shop_id BIGINT UNSIGNED NOT NULL,
+    visit_key VARCHAR(100) COLLATE utf8mb4_bin NOT NULL,
+    visitor_hash CHAR(64) COLLATE ascii_bin NOT NULL,
+    started_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (shop_id, visit_key),
+    UNIQUE (visit_id, shop_id),
+    INDEX idx_visits_shop_date (shop_id, started_at),
+    FOREIGN KEY (shop_id) REFERENCES Shops(shop_id)
+) ENGINE=InnoDB;
+
+CREATE TABLE ProductEvents (
+    event_id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+    shop_id BIGINT UNSIGNED NOT NULL,
+    product_id BIGINT UNSIGNED NOT NULL,
+    visit_id BIGINT UNSIGNED NOT NULL,
+    request_id VARCHAR(100) COLLATE utf8mb4_bin NOT NULL,
+    event_type ENUM('view', 'add_to_cart') NOT NULL,
+    occurred_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (shop_id, request_id),
+    INDEX idx_product_events_period (shop_id, occurred_at, product_id, event_type),
+    FOREIGN KEY (product_id, shop_id) REFERENCES Products(product_id, shop_id),
+    FOREIGN KEY (visit_id, shop_id) REFERENCES ShopVisits(visit_id, shop_id)
+) ENGINE=InnoDB;
+
+CREATE TABLE FlashSales (
+    flash_sale_id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+    shop_id BIGINT UNSIGNED NOT NULL,
+    title VARCHAR(150) NOT NULL,
+    starts_at DATETIME NOT NULL,
+    expires_at DATETIME NOT NULL,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    UNIQUE (flash_sale_id, shop_id),
+    INDEX idx_flash_sales_shop (shop_id, expires_at),
+    CONSTRAINT ck_flash_sale_dates CHECK (expires_at > starts_at),
+    FOREIGN KEY (shop_id) REFERENCES Shops(shop_id)
+) ENGINE=InnoDB;
+
+CREATE TABLE FlashSaleItems (
+    flash_sale_id BIGINT UNSIGNED NOT NULL,
+    shop_id BIGINT UNSIGNED NOT NULL,
+    product_id BIGINT UNSIGNED NOT NULL,
+    sale_price_centavos BIGINT UNSIGNED NOT NULL,
+    unit_limit INT UNSIGNED NOT NULL,
+    PRIMARY KEY (flash_sale_id, product_id),
+    CONSTRAINT ck_flash_item_price CHECK (sale_price_centavos > 0),
+    CONSTRAINT ck_flash_item_limit CHECK (unit_limit > 0),
+    FOREIGN KEY (flash_sale_id, shop_id) REFERENCES FlashSales(flash_sale_id, shop_id),
+    FOREIGN KEY (product_id, shop_id) REFERENCES Products(product_id, shop_id)
+) ENGINE=InnoDB;
+
+CREATE TABLE PromotionEvents (
+    event_id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+    shop_id BIGINT UNSIGNED NOT NULL,
+    voucher_id BIGINT UNSIGNED,
+    flash_sale_id BIGINT UNSIGNED,
+    visit_id BIGINT UNSIGNED NOT NULL,
+    request_id VARCHAR(100) COLLATE utf8mb4_bin NOT NULL,
+    occurred_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (shop_id, request_id),
+    INDEX idx_promotion_events_period (shop_id, occurred_at),
+    CONSTRAINT ck_promotion_target CHECK (
+        (voucher_id IS NOT NULL AND flash_sale_id IS NULL) OR
+        (voucher_id IS NULL AND flash_sale_id IS NOT NULL)
+    ),
+    FOREIGN KEY (voucher_id, shop_id) REFERENCES Vouchers(voucher_id, shop_id),
+    FOREIGN KEY (flash_sale_id, shop_id) REFERENCES FlashSales(flash_sale_id, shop_id),
+    FOREIGN KEY (visit_id, shop_id) REFERENCES ShopVisits(visit_id, shop_id)
+) ENGINE=InnoDB;
+
+-- Server-recorded flash-sale item attribution. One item has one flash sale.
+CREATE TABLE FlashSalePurchases (
+    order_item_id BIGINT UNSIGNED PRIMARY KEY,
+    flash_sale_id BIGINT UNSIGNED NOT NULL,
+    product_id BIGINT UNSIGNED NOT NULL,
+    FOREIGN KEY (order_item_id, product_id) REFERENCES OrderItems(order_item_id, product_id),
+    FOREIGN KEY (flash_sale_id, product_id) REFERENCES FlashSaleItems(flash_sale_id, product_id)
+) ENGINE=InnoDB;
+
+-- One row per order: aggregate child rows before joining to prevent fan-out.
+-- API queries MUST filter shop_id using the authenticated seller's shop.
+CREATE VIEW SellerOrderFacts AS
+SELECT o.order_id, o.shop_id, o.buyer_user_id, o.status, o.placed_at,
+    DATE(DATE_ADD(o.placed_at, INTERVAL 8 HOUR)) AS philippine_date,
+    o.subtotal_centavos, o.commission_centavos,
+    COALESCE(i.units, 0) AS units,
+    COALESCE(r.refunded_centavos, 0) AS refunded_centavos,
+    CAST(o.subtotal_centavos AS SIGNED) - CAST(o.commission_centavos AS SIGNED)
+        - CAST(COALESCE(r.refunded_centavos, 0) AS SIGNED) AS net_centavos
+FROM Orders o
+LEFT JOIN (
+    SELECT order_id, SUM(quantity) AS units FROM OrderItems GROUP BY order_id
+) i ON i.order_id = o.order_id
+LEFT JOIN (
+    SELECT order_id, SUM(amount_centavos) AS refunded_centavos
+    FROM RefundRequests WHERE status = 'refunded' GROUP BY order_id
+) r ON r.order_id = o.order_id;
+
+CREATE VIEW SellerDailySales AS
+SELECT shop_id, philippine_date, COUNT(*) AS orders,
+    SUM(CASE WHEN status = 'completed' THEN subtotal_centavos ELSE 0 END) AS sales_centavos,
+    SUM(CASE WHEN status = 'completed' THEN net_centavos ELSE 0 END) AS earnings_centavos,
+    SUM(CASE WHEN status = 'completed' THEN units ELSE 0 END) AS units,
+    SUM(status = 'completed') AS completed_orders,
+    SUM(status = 'cancelled') AS cancelled_orders,
+    SUM(status = 'completed' AND refunded_centavos > 0) AS returned_orders
+FROM SellerOrderFacts GROUP BY shop_id, philippine_date;
 
 CREATE TABLE DeviceTokens (
     token_id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,

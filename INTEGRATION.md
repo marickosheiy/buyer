@@ -76,6 +76,12 @@ point to the HTTP API, never directly to MySQL. The client rejects API calls
 until a valid HTTP/HTTPS URL is configured. Explicit connected mode reports
 service errors without signing in as a demo user.
 
+Seller dashboard analytics, promotion controls, notification read state, packing
+and shipping actions now have a separate API contract in
+[`database/SELLER_ANALYTICS.md`](database/SELLER_ANALYTICS.md). Implement that
+contract alongside the existing workspace route. Connected analytics never fall
+back to demo data; traffic metrics require shared buyer/backend instrumentation.
+
 The retained client currently expects:
 
 - JSON requests/responses, with a base URL ending in `/api`.
